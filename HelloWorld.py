@@ -1,10 +1,12 @@
 # Step 1: Data Preprocessing with PySpark
 import os
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import col,lit,concat_ws
 from pyspark.ml.feature import Tokenizer, StopWordsRemover, HashingTF, IDF
 from pyspark.ml.clustering import KMeans
 from pyspark.ml.feature import StringIndexer, VectorAssembler
 from pyspark.sql.functions import col
+import pandas as pd
 
 # Set SPARK_HOME if running locally
 os.environ["SPARK_HOME"] = "C:/Users/arhod/spark-3.5.5"
@@ -13,34 +15,51 @@ os.environ["SPARK_HOME"] = "C:/Users/arhod/spark-3.5.5"
 spark = SparkSession.builder.appName("ResearcherStartupMatching").getOrCreate()
 
 # Load datasets
-researchers_df = spark.read.option("header", "true").csv("C:/Users/arhod/Desktop/Diploma-vscode/indian_faculty_dataset.csv")
-startups_df = spark.read.option("header", "true").csv("C:/Users/arhod/Desktop/Diploma-vscode/INC 5000 Companies 2019.csv")
+#researchers_df = spark.read.option("header", "true").csv("C:/Users/arhod/Desktop/Diploma-vscode/indian_faculty_dataset.csv")
+
+startups_df = spark.read.format("csv") \
+    .option("header", "true") \
+    .option("inferSchema", "true") \
+    .load("C:/Users/arhod/Desktop/Diploma-vscode/INC 5000 Companies 2019.csv")
+
+researchers_df = spark.read.format("csv") \
+    .option("header", "true") \
+    .option("inferSchema", "true") \
+    .load("C:/Users/arhod/Desktop/Diploma-vscode/indian_faculty_dataset.csv")
 
 # Εμφάνισε τις στήλες για τους ερευνητες(schema)
-#researchers_df.printSchema()
+researchers_df.printSchema()
+
+
+
+""" researchers_df = researchers_df.withColumn(
+    "text_features", concat_ws(" | ", col("Position"), col("Department"), col("Expertise"), col("Highest Qualification"))
+).withColumn("type", lit("researcher")).withColumnRenamed("Name", "entity_name")
+ """
+
+# Keep only specific columns in researchers_df
+#columns_to_keep = ["Vidwan-ID", "entity_name", "text_features", "type"]
+#researchers_df = researchers_df.select(*columns_to_keep)
+
+
+# Εμφάνισε τις στήλες για τις εταιρίες(schema)
+#startups_df.printSchema()
+
+# Εμφάνισε τις στήλες για τους ερευνητες(schema)
+researchers_df.printSchema()
 
 # Εμφάνισε τα 10 πρώτα rows, σαν πίνακα (tabular)
-#researchers_df.show(10, truncate=False)
+#startups_df.show(5, truncate=False)
 
-startups_df.printSchema()
-print("Rows before cleaning:", startups_df.count())
-startups_df.show(10, truncate=False)
-
-
-startups_df = startups_df.select("rank", "profile", "name", "url", "industry")
-startups_df = startups_df.filter(
-    col("rank").isNotNull() & (col("rank") != "") &
-    col("profile").isNotNull() & (col("profile") != "") &
-    col("name").isNotNull() & (col("name") != "") &
-    col("url").isNotNull() & (col("url") != "") &
-    col("industry").isNotNull() & (col("industry") != "")
-)
+# Εμφάνισε τα 5 πρώτα rows, σαν πίνακα (tabular)
+researchers_df.show(5, truncate=False)
 
 
-print("Rows after cleaning:", startups_df.count())
-startups_df.show(10, truncate=False)
 
-# Save the cleaned startups_df to a new CSV file
-output_path = "C:/Users/arhod/Desktop/Diploma-vscode/cleaned_startups.csv"
-startups_df.write.mode("overwrite").option("header", "true").csv(output_path)
+# Step 2: Data Cleaning
+# Check nulls in each column
+#null_counts = startups_df.select([sum(col(c).isNull().cast('int')).alias(c) for c in startups_df.columns])
+
+# Show the result
+#null_counts.show()
 
