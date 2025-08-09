@@ -30,23 +30,23 @@ researchers_df = spark.read.format("csv") \
 
 
 
-    def replace_missing_spark(df, columns, method="mean"):
-        for column in columns:
-            # Check for null or NaN values
-            null_count = df.filter(col(column).isNull() | (col(column) != col(column))).count()
-            if null_count > 0:
-                if method == "mean":
-                    mean_value = df.select(_mean(col(column))).first()[0]
-                    if mean_value is not None:
-                        df = df.withColumn(
-                            column,
-                            when(col(column).isNull() | (col(column) != col(column)), mean_value).otherwise(col(column))
-                        )
-                elif method == "count":
-                    count_value = df.count()
+def replace_missing_spark(df, columns, method="mean"):
+    for column in columns:
+        # Check for null or NaN values
+        null_count = df.filter(col(column).isNull() | (col(column) != col(column))).count()
+        if null_count > 0:
+            if method == "mean":
+                mean_value = df.select(_mean(col(column))).first()[0]
+                if mean_value is not None:
                     df = df.withColumn(
                         column,
-                        when(col(column).isNull() | (col(column) != col(column)), count_value).otherwise(col(column))
+                        when(col(column).isNull() | (col(column) != col(column)), mean_value).otherwise(col(column))
                     )
+            elif method == "count":
+                count_value = df.count()
+                df = df.withColumn(
+                    column,
+                    when(col(column).isNull() | (col(column) != col(column)), count_value).otherwise(col(column))
+                )
     # Add more methods if needed
-    return replace_missing_spark
+    return df
