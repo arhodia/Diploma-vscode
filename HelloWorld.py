@@ -62,4 +62,5 @@ researchers_df.show(5, truncate=False)
 
 # Show the result
 #null_counts.show()
-
+# Print the row with Vidwan-ID = 60818 in researchers_df
+researchers_df.filter((col("Vidwan-ID") == 60818) | (col("Vidwan-ID") == 556358)).show(truncate=False)

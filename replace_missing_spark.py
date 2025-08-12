@@ -10,6 +10,7 @@ import pandas as pd
 from pyspark.sql.functions import col, mean as _mean, count as _count, when
 from pyspark.sql.types import NumericType
 from pyspark.sql.functions import isnan
+from pyspark.sql.types import IntegerType
 # Initialize Spark session
 spark = SparkSession.builder.appName("ResearcherStartupMatching").getOrCreate()
 
@@ -18,8 +19,12 @@ spark = SparkSession.builder.appName("ResearcherStartupMatching").getOrCreate()
 # Count the number of rows for each dataset
 researchers_count = spark.read.option("header", "true").csv("C:/Users/arhod/Desktop/Diploma-vscode/indian_faculty_dataset.csv").count()
 startups_count = spark.read.option("header", "true").csv("C:/Users/arhod/Desktop/Diploma-vscode/INC 5000 Companies 2019.csv").count()
+
+
 print(f"Number of rows in researchers dataset: {researchers_count}")
-print(f"Number of rows in startups dataset: {startups_count}")
+print(f"Number of rows in startups dataset: {startups_count}") 
+
+
 startups_df = spark.read.format("csv") \
     .option("header", "true") \
     .option("inferSchema", "true") \
@@ -40,14 +45,39 @@ def count_null_nan(df):
         null_nan_counts[column] = count
     return null_nan_counts
 
-
 # call the count_null_nan function and calculate null and nan values
 null_nan_counts_startups = count_null_nan(startups_df)
 null_nan_counts_researchers = count_null_nan(researchers_df)
 print("Startups null/nan counts:", null_nan_counts_startups)
 print("Researchers null/nan counts:", null_nan_counts_researchers)
 
-# replace the nan and null values with a parameter mean 
+
+
+print("Researchers dataframe columns are:")
+researchers_df.printSchema()
+print("Startups dataframe columns are:")
+startups_df.printSchema()
+
+
+# Μετατροπή των δύο στηλών από string (με μορφή 3.0, 4.0, κλπ.) σε integer
+researchers_df = researchers_df.withColumn(
+    "Start Year",
+    col("Start Year").cast(IntegerType())
+).withColumn(
+    "Years of Experience",
+    col("Years of Experience").cast(IntegerType())
+)
+
+# Μετατροπή των δύο στηλών από string (με μορφή 3.0, 4.0, κλπ.) σε integer
+researchers_df = researchers_df.withColumn(
+    "Years of Experience",
+    col("Years of Experience").cast(IntegerType())
+).withColumn(
+    "Years of Experience",
+    col("Years of Experience").cast(IntegerType())
+)
+
+# replace the nan and null values with a parameter mean
 #def replace_missing_spark(df, columns, method="mean"):
 #    for column in columns:
         # Check for null, NaN, or space (' ') values
@@ -117,8 +147,12 @@ researchers_df = replace_missing_spark(researchers_df, columns_to_replace_resear
 null_nan_counts_startups = count_null_nan(startups_df)
 null_nan_counts_researchers = count_null_nan(researchers_df)
 print("Startups null/nan counts:", null_nan_counts_startups)
-print("Researchers null/nan counts:", null_nan_counts_researchers)
+print("Researchers null/nan counts:", null_nan_counts_researchers) 
 
 
 # Print the row from researchers_df where 'vidwan-id' equals 60818
 researchers_df.filter(col("vidwan-id") == 60818).show()
+
+
+print("Researchers dataframe columns are:")
+researchers_df.printSchema()
