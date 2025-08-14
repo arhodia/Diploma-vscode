@@ -60,22 +60,13 @@ startups_df.printSchema()
 
 
 # Μετατροπή των δύο στηλών από string (με μορφή 3.0, 4.0, κλπ.) σε integer
-researchers_df = researchers_df.withColumn(
-    "Start Year",
-    col("Start Year").cast(IntegerType())
-).withColumn(
-    "Years of Experience",
-    col("Years of Experience").cast(IntegerType())
+
+researchers_df_new = (
+    researchers_df
+    .withColumn("Start Year", col("Start Year").cast(IntegerType()))
+    .withColumn("Years of Experience", col("Years of Experience").cast(IntegerType()))
 )
 
-# Μετατροπή των δύο στηλών από string (με μορφή 3.0, 4.0, κλπ.) σε integer
-researchers_df = researchers_df.withColumn(
-    "Years of Experience",
-    col("Years of Experience").cast(IntegerType())
-).withColumn(
-    "Years of Experience",
-    col("Years of Experience").cast(IntegerType())
-)
 
 # replace the nan and null values with a parameter mean
 #def replace_missing_spark(df, columns, method="mean"):
@@ -107,18 +98,19 @@ researchers_df = researchers_df.withColumn(
     # Add more methods if needed
 #    return df
 
-def replace_missing_spark(df, columns, numeric_fill="mean", string_fill="Unknown"):
+
+def replace_missing_spark(df, columns, numeric_fill="max", string_fill="Unknown"):
     for column in columns:
         # Detect type
         if isinstance(df.schema[column].dataType, NumericType):
-            if numeric_fill == "mean":
-                mean_value = df.select(_mean(col(column))).first()[0]
-                if mean_value is not None:
+            if numeric_fill == "max":
+                max_value = df.select(col(column)).agg({"{}".format(column): "max"}).first()[0]
+                if max_value is not None:
                     df = df.withColumn(
                         column,
                         when(
                             col(column).isNull() | isnan(col(column)) | (col(column) == ' '),
-                            mean_value
+                            max_value
                         ).otherwise(col(column))
                     )
             else:
@@ -137,22 +129,21 @@ def replace_missing_spark(df, columns, numeric_fill="mean", string_fill="Unknown
 
 # insert columns to replace 
 columns_to_replace_startups = ["workers", "metro"]
-startups_df = replace_missing_spark(startups_df, columns_to_replace_startups, numeric_fill="mean", string_fill="Unknown")
+startups_df = replace_missing_spark(startups_df, columns_to_replace_startups, numeric_fill="max", string_fill="Unknown")
 
 columns_to_replace_researchers = ["Department", "Location", "Expertise", "Experience", "Qualification", "Honours and Awards", "Start Year", "Years of Experience"]
-researchers_df = replace_missing_spark(researchers_df, columns_to_replace_researchers, numeric_fill="mean", string_fill="Unknown")
+researchers_df_new = replace_missing_spark(researchers_df_new, columns_to_replace_researchers, numeric_fill="max", string_fill="Unknown")
 
 
 # check if there is null values in the new dataframes
 null_nan_counts_startups = count_null_nan(startups_df)
-null_nan_counts_researchers = count_null_nan(researchers_df)
+null_nan_counts_researchers = count_null_nan(researchers_df_new)
 print("Startups null/nan counts:", null_nan_counts_startups)
 print("Researchers null/nan counts:", null_nan_counts_researchers) 
 
 
-# Print the row from researchers_df where 'vidwan-id' equals 60818
-researchers_df.filter(col("vidwan-id") == 60818).show()
-
+# Print the row from researchers_df where 'vidwan-id' equals 56586
+researchers_df_new.filter(col("vidwan-id") == 56586).show()
 
 print("Researchers dataframe columns are:")
-researchers_df.printSchema()
+researchers_df_new.printSchema() 
