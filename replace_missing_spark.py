@@ -11,6 +11,10 @@ from pyspark.sql.functions import col, mean as _mean, count as _count, when
 from pyspark.sql.types import NumericType
 from pyspark.sql.functions import isnan
 from pyspark.sql.types import IntegerType
+from pyspark.sql.functions import col, when, lit, isnan
+from pyspark.sql.types import NumericType
+import datetime
+
 # Initialize Spark session
 spark = SparkSession.builder.appName("ResearcherStartupMatching").getOrCreate()
 
@@ -51,8 +55,6 @@ null_nan_counts_researchers = count_null_nan(researchers_df)
 print("Startups null/nan counts:", null_nan_counts_startups)
 print("Researchers null/nan counts:", null_nan_counts_researchers)
 
-
-
 print("Researchers dataframe columns are:")
 researchers_df.printSchema()
 print("Startups dataframe columns are:")
@@ -60,13 +62,11 @@ startups_df.printSchema()
 
 
 # Μετατροπή των δύο στηλών από string (με μορφή 3.0, 4.0, κλπ.) σε integer
-
 researchers_df_new = (
     researchers_df
     .withColumn("Start Year", col("Start Year").cast(IntegerType()))
     .withColumn("Years of Experience", col("Years of Experience").cast(IntegerType()))
 )
-
 
 # replace the nan and null values with a parameter mean
 #def replace_missing_spark(df, columns, method="mean"):
@@ -100,11 +100,22 @@ researchers_df_new = (
 
 
 def replace_missing_spark(df, columns, numeric_fill="max", string_fill="Unknown"):
+    current_year = datetime.datetime.now().year  # π.χ. 2025
+    
     for column in columns:
-        # Detect type
-        if isinstance(df.schema[column].dataType, NumericType):
+        if column == "Years of Experience":
+            # Αν η στήλη έχει κενό → current_year - Start Year
+            df = df.withColumn(
+                column,
+                when(
+                    (col(column) == ' ') | col(column).isNull() | isnan(col(column)),
+                    lit(current_year) - col("Start Year")
+                ).otherwise(col(column))
+            )
+        
+        elif isinstance(df.schema[column].dataType, NumericType):
             if numeric_fill == "max":
-                max_value = df.select(col(column)).agg({"{}".format(column): "max"}).first()[0]
+                max_value = df.select(col(column)).agg({column: "max"}).first()[0]
                 if max_value is not None:
                     df = df.withColumn(
                         column,
@@ -115,8 +126,8 @@ def replace_missing_spark(df, columns, numeric_fill="max", string_fill="Unknown"
                     )
             else:
                 df = df.fillna({column: numeric_fill})
+        
         else:
-            # String column → replace null, NaN, empty
             df = df.withColumn(
                 column,
                 when(
