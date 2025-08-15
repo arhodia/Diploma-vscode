@@ -1,4 +1,4 @@
-# Step 1: Data Preprocessing with PySpark
+""" # Step 1: Data Preprocessing with PySpark
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col,lit,concat_ws
@@ -157,4 +157,89 @@ print("Researchers null/nan counts:", null_nan_counts_researchers)
 researchers_df_new.filter(col("vidwan-id") == 56586).show()
 
 print("Researchers dataframe columns are:")
-researchers_df_new.printSchema() 
+researchers_df_new.printSchema()  """
+
+
+
+
+
+# replace_missing_spark.py
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, when, lit, isnan
+from pyspark.sql.types import IntegerType, NumericType
+import datetime
+
+# Initialize Spark session (only once)
+spark = SparkSession.builder.appName("ResearcherStartupMatching").getOrCreate()
+
+def count_null_nan(df):
+    null_nan_counts = {}
+    for column in df.columns:
+        count = df.filter(
+            col(column).isNull() | (col(column) != col(column)) | (col(column) == ' ')
+        ).count()
+        null_nan_counts[column] = count
+    return null_nan_counts
+
+
+def replace_missing_spark(df, columns, numeric_fill="max", string_fill="Unknown"):
+    current_year = datetime.datetime.now().year
+    for column in columns:
+        if column == "Years of Experience":
+            df = df.withColumn(
+                column,
+                when(
+                    (col(column) == ' ') | col(column).isNull() | isnan(col(column)),
+                    lit(current_year) - col("Start Year")
+                ).otherwise(col(column))
+            )
+        elif isinstance(df.schema[column].dataType, NumericType):
+            if numeric_fill == "max":
+                max_value = df.select(col(column)).agg({column: "max"}).first()[0]
+                if max_value is not None:
+                    df = df.withColumn(
+                        column,
+                        when(
+                            col(column).isNull() | isnan(col(column)) | (col(column) == ' '),
+                            max_value
+                        ).otherwise(col(column))
+                    )
+            else:
+                df = df.fillna({column: numeric_fill})
+        else:
+            df = df.withColumn(
+                column,
+                when(
+                    col(column).isNull() | (col(column) == '') | isnan(col(column)),
+                    string_fill
+                ).otherwise(col(column))
+            )
+    return df
+
+
+def load_and_clean_data():
+    startups_df = spark.read.format("csv") \
+        .option("header", "true") \
+        .option("inferSchema", "true") \
+        .load("C:/Users/arhod/Desktop/Diploma-vscode/INC 5000 Companies 2019.csv")
+
+    researchers_df = spark.read.format("csv") \
+        .option("header", "true") \
+        .option("inferSchema", "true") \
+        .load("C:/Users/arhod/Desktop/Diploma-vscode/indian_faculty_dataset.csv")
+
+    researchers_df = (
+        researchers_df
+        .withColumn("Start Year", col("Start Year").cast(IntegerType()))
+        .withColumn("Years of Experience", col("Years of Experience").cast(IntegerType()))
+    )
+
+    startups_df = replace_missing_spark(startups_df, ["workers", "metro"], numeric_fill="max", string_fill="Unknown")
+    researchers_df = replace_missing_spark(researchers_df, 
+        ["Department", "Location", "Expertise", "Experience", "Qualification", "Honours and Awards", "Start Year", "Years of Experience"], 
+        numeric_fill="max", string_fill="Unknown"
+    )
+
+    return startups_df, researchers_df
+
