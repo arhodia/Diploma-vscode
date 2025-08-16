@@ -158,21 +158,16 @@ researchers_df_new.filter(col("vidwan-id") == 56586).show()
 
 print("Researchers dataframe columns are:")
 researchers_df_new.printSchema()  """
-
-
-
-
-
 # replace_missing_spark.py
-
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, when, lit, isnan
 from pyspark.sql.types import IntegerType, NumericType
 import datetime
 
-# Initialize Spark session (only once)
+# Initialize Spark session 
 spark = SparkSession.builder.appName("ResearcherStartupMatching").getOrCreate()
 
+#Συνάρτηση που υπολογίζει τα null/nan values για όλες τις στήλες
 def count_null_nan(df):
     null_nan_counts = {}
     for column in df.columns:
@@ -182,7 +177,7 @@ def count_null_nan(df):
         null_nan_counts[column] = count
     return null_nan_counts
 
-
+#Συνάρτηση που αντικαθιστά τα null/nan values ανάλογα με τον τύπο της στήλης
 def replace_missing_spark(df, columns, numeric_fill="max", string_fill="Unknown"):
     current_year = datetime.datetime.now().year
     for column in columns:
@@ -223,12 +218,17 @@ def load_and_clean_data():
         .option("header", "true") \
         .option("inferSchema", "true") \
         .load("C:/Users/arhod/Desktop/Diploma-vscode/INC 5000 Companies 2019.csv")
+    # Find the first row where 'workers' column is ' ' and get the entire row
+    first_blank_workers_row = startups_df.filter(col("workers") == ' ').first()
+    
 
     researchers_df = spark.read.format("csv") \
         .option("header", "true") \
         .option("inferSchema", "true") \
         .load("C:/Users/arhod/Desktop/Diploma-vscode/indian_faculty_dataset.csv")
 
+    null_nan_counts_researchers = count_null_nan(researchers_df)
+    null_nan_counts_startups = count_null_nan(startups_df)
     researchers_df = (
         researchers_df
         .withColumn("Start Year", col("Start Year").cast(IntegerType()))
@@ -241,5 +241,6 @@ def load_and_clean_data():
         numeric_fill="max", string_fill="Unknown"
     )
 
-    return startups_df, researchers_df
+    return  first_blank_workers_row,null_nan_counts_startups,null_nan_counts_researchers,startups_df, researchers_df
+    return null_nan_counts_researchers, startups_df, researchers_df
 

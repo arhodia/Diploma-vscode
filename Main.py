@@ -67,18 +67,54 @@ import pandas as pd """
 
 
 # main.py
+import os
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col,lit,concat_ws
+from pyspark.ml.feature import Tokenizer, StopWordsRemover, HashingTF, IDF
+from pyspark.ml.clustering import KMeans
+from pyspark.ml.feature import StringIndexer, VectorAssembler
+from pyspark.sql.functions import col
 from pyparsing import col
 from replace_missing_spark import load_and_clean_data
 from pyspark.sql.functions import col
+from pyspark.sql.functions import isnan, when, count, col, trim
 
 
-startups_df, researchers_df = load_and_clean_data()
+first_blank_workers_row,null_nan_counts_startups,null_nan_counts_researchers,startups_df, researchers_df = load_and_clean_data()
 
 # Now you can use them
+print("First 'workers' value where blank:")
+print(first_blank_workers_row)
+print("Null/NaN counts in startups dataset:")
+print(null_nan_counts_startups)
+print("Null/NaN counts in researchers dataset:")
+print(null_nan_counts_researchers)
+# Show the schema of the DataFrames
 researchers_df.printSchema()
+startups_df.printSchema()
+
+#confirm 
 startups_df.show(5)
 researchers_df.show(5)
+
+
+def count_null_nan_blank(df):
+    return df.select([
+        count(
+            when(
+                col(c).isNull() | isnan(col(c)) | (trim(col(c)) == ''), c
+            )
+        ).alias(c) for c in df.columns
+    ])
+
+print("Null/NaN/blank counts in startups dataset:")
+count_null_nan_blank(startups_df).show()
+
+print("Null/NaN/blank counts in researchers dataset:")
+count_null_nan_blank(researchers_df).show()
+
 researchers_df.filter((col("Vidwan-ID") == 56586) | (col("Vidwan-ID") == 556358)).show(truncate=False) 
+startups_df.filter((col("rank") == 4)).show(truncate=False) 
 
 
 
