@@ -165,7 +165,7 @@ from pyspark.sql.types import IntegerType, NumericType
 import datetime
 
 # Initialize Spark session 
-spark = SparkSession.builder.appName("ResearcherStartupMatching").getOrCreate()
+spark = SparkSession.builder.appName("ResearcherStartupMatching").master("local[*]").getOrCreate()
 
 #Συνάρτηση που υπολογίζει τα null/nan values για όλες τις στήλες
 def count_null_nan(df):
@@ -240,6 +240,9 @@ def load_and_clean_data():
         ["Department", "Location", "Expertise", "Experience", "Qualification", "Honours and Awards", "Start Year", "Years of Experience"], 
         numeric_fill="max", string_fill="Unknown"
     )
+
+    print("Spark master:", spark.sparkContext.master)
+    print("Spark running with cores:", spark.sparkContext.defaultParallelism)
 
     return  first_blank_workers_row,null_nan_counts_startups,null_nan_counts_researchers,startups_df, researchers_df
     return null_nan_counts_researchers, startups_df, researchers_df

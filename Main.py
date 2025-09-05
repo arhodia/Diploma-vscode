@@ -78,7 +78,7 @@ from pyparsing import col
 from replace_missing_spark import load_and_clean_data
 from pyspark.sql.functions import col
 from pyspark.sql.functions import isnan, when, count, col, trim
-
+from pyspark.mllib.feature import Word2Vec
 
 first_blank_workers_row,null_nan_counts_startups,null_nan_counts_researchers,startups_df, researchers_df = load_and_clean_data()
 
@@ -92,6 +92,16 @@ print(null_nan_counts_researchers)
 # Show the schema of the DataFrames
 researchers_df.printSchema()
 startups_df.printSchema()
+
+# Show the size in MB of each DataFrame
+def dataframe_size_mb(df):
+    # Estimate size by converting to Pandas and checking memory usage
+    pdf = df.limit(1000000).toPandas()  # limit to avoid OOM for very large datasets
+    size_mb = pdf.memory_usage(deep=True).sum() / (1024 * 1024)
+    return size_mb
+
+print(f"Researchers DataFrame size (MB): {dataframe_size_mb(researchers_df):.2f}")
+print(f"Startups DataFrame size (MB): {dataframe_size_mb(startups_df):.2f}")
 
 #confirm 
 startups_df.show(5)
@@ -119,4 +129,14 @@ startups_df.filter((col("rank") == 4)).show(truncate=False)
 
 
 
-# K-MEANS 
+# 1. Παίρνουμε τα text features από Spark
+#researchers_pd = researchers_df.select("Vidwan-ID", "Department").toPandas()
+#startups_pd = startups_df.select("rank", "industry_features").toPandas()
+
+
+
+
+
+
+
+
