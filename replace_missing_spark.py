@@ -167,7 +167,7 @@ import datetime
 # Initialize Spark session 
 spark = SparkSession.builder.appName("ResearcherStartupMatching").master("local[*]").getOrCreate()
 
-#Συνάρτηση που υπολογίζει τα null/nan values για όλες τις στήλες
+#Συνάρτηση που υπολογίζει τα null/nan values για όλες τις στήλες->Για να ξερω ποιες στηλες εχουν null/nan
 def count_null_nan(df):
     null_nan_counts = {}
     for column in df.columns:
@@ -214,6 +214,8 @@ def replace_missing_spark(df, columns, numeric_fill="max", string_fill="Unknown"
 
 
 def load_and_clean_data():
+
+    #Διαβάζω τo 1o αρχείο σε spark
     startups_df = spark.read.format("csv") \
         .option("header", "true") \
         .option("inferSchema", "true") \
@@ -221,26 +223,34 @@ def load_and_clean_data():
     # Find the first row where 'workers' column is ' ' and get the entire row
     first_blank_workers_row = startups_df.filter(col("workers") == ' ').first()
     
-
+    #Διαβάζω τo 2o αρχείο σε spark 
     researchers_df = spark.read.format("csv") \
         .option("header", "true") \
         .option("inferSchema", "true") \
         .load("C:/Users/arhod/Desktop/Diploma-vscode/indian_faculty_dataset.csv")
 
+    # Καλώ τη συνάρτηση που υπολογίζει τα null/nan values για όλες τις στήλες και για τα 2 αρχεία
     null_nan_counts_researchers = count_null_nan(researchers_df)
     null_nan_counts_startups = count_null_nan(startups_df)
+    #Μετατρεπω τις στήλες "Start Year" και "Years of Experience" σε Integer
     researchers_df = (
         researchers_df
         .withColumn("Start Year", col("Start Year").cast(IntegerType()))
         .withColumn("Years of Experience", col("Years of Experience").cast(IntegerType()))
     )
 
+
+    #Καλώ τη συνάρτηση που αντικαθιστά τα null/nan values ανάλογα με τον τύπο της στήλης έχοντας ώς όρισμα τις στήλες που έχουν κενά
     startups_df = replace_missing_spark(startups_df, ["workers", "metro"], numeric_fill="max", string_fill="Unknown")
+    #Καλώ τη συνάρτηση που αντικαθιστά τα null/nan values ανάλογα με τον τύπο της στήλης έχοντας ώς όρισμα τις στήλες που έχουν κενά
     researchers_df = replace_missing_spark(researchers_df, 
         ["Department", "Location", "Expertise", "Experience", "Qualification", "Honours and Awards", "Start Year", "Years of Experience"], 
         numeric_fill="max", string_fill="Unknown"
     )
+ 
 
+    #Εμφάνισε πληροφορίες για το Spark περιβάλλον, πόσοι πυρήνες χρησιμοποιούνται κλπ.
+    print("Spark version:", spark.version)
     print("Spark master:", spark.sparkContext.master)
     print("Spark running with cores:", spark.sparkContext.defaultParallelism)
 

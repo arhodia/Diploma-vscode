@@ -69,43 +69,43 @@ import pandas as pd """
 # main.py
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col,lit,concat_ws
-from pyspark.ml.feature import Tokenizer, StopWordsRemover, HashingTF, IDF
+from pyspark.sql.functions import col,concat_ws,regexp_replace,lower
+from pyspark.ml.feature import StopWordsRemover, RegexTokenizer,RegexTokenizer, StopWordsRemover, Word2Vec as MLWord2Vec, VectorAssembler, StandardScaler
 from pyspark.ml.clustering import KMeans
-from pyspark.ml.feature import StringIndexer, VectorAssembler
-from pyspark.sql.functions import col
-from pyparsing import col
+from pyspark.ml.feature import VectorAssembler
 from replace_missing_spark import load_and_clean_data
-from pyspark.sql.functions import col
 from pyspark.sql.functions import isnan, when, count, col, trim
 from pyspark.mllib.feature import Word2Vec
+from pyspark.ml import Pipeline
+from pyspark.ml.evaluation import ClusteringEvaluator
 
 first_blank_workers_row,null_nan_counts_startups,null_nan_counts_researchers,startups_df, researchers_df = load_and_clean_data()
 
-# Now you can use them
-print("First 'workers' value where blank:")
-print(first_blank_workers_row)
-print("Null/NaN counts in startups dataset:")
-print(null_nan_counts_startups)
-print("Null/NaN counts in researchers dataset:")
-print(null_nan_counts_researchers)
-# Show the schema of the DataFrames
-researchers_df.printSchema()
-startups_df.printSchema()
+# Now you can use them - 
+#print("First 'workers' value where blank:")
+#print(first_blank_workers_row)
+#print("Null/NaN counts in startups dataset:")
+#print(null_nan_counts_startups)
+#print("Null/NaN counts in researchers dataset:")
+#print(null_nan_counts_researchers)
+
+# Show the schema of the DataFrames - Εκτυπώνει 
+#researchers_df.printSchema()
+#startups_df.printSchema()
 
 # Show the size in MB of each DataFrame
-def dataframe_size_mb(df):
+#def dataframe_size_mb(df):
     # Estimate size by converting to Pandas and checking memory usage
-    pdf = df.limit(1000000).toPandas()  # limit to avoid OOM for very large datasets
-    size_mb = pdf.memory_usage(deep=True).sum() / (1024 * 1024)
-    return size_mb
+#    pdf = df.limit(1000000).toPandas()  # limit to avoid OOM for very large datasets
+#    size_mb = pdf.memory_usage(deep=True).sum() / (1024 * 1024)
+#    return size_mb
 
-print(f"Researchers DataFrame size (MB): {dataframe_size_mb(researchers_df):.2f}")
-print(f"Startups DataFrame size (MB): {dataframe_size_mb(startups_df):.2f}")
+#print(f"Researchers DataFrame size (MB): {dataframe_size_mb(researchers_df):.2f}")
+#print(f"Startups DataFrame size (MB): {dataframe_size_mb(startups_df):.2f}")
 
 #confirm 
-startups_df.show(5)
-researchers_df.show(5)
+#startups_df.show(5)
+#researchers_df.show(5)
 
 
 def count_null_nan_blank(df):
@@ -117,26 +117,122 @@ def count_null_nan_blank(df):
         ).alias(c) for c in df.columns
     ])
 
+#Καλώ τη συνάρτηση για να εκτυπώσω και να επιβεβαιώσω ότι δεν υπάρχουν null/nan/blank τιμές και στα 2 αρχεία
 print("Null/NaN/blank counts in startups dataset:")
 count_null_nan_blank(startups_df).show()
 
 print("Null/NaN/blank counts in researchers dataset:")
 count_null_nan_blank(researchers_df).show()
 
-researchers_df.filter((col("Vidwan-ID") == 56586) | (col("Vidwan-ID") == 556358)).show(truncate=False) 
-startups_df.filter((col("rank") == 4)).show(truncate=False) 
+
+#Εμφανίζει μια γραμμή με συγκεκριμένο Vidwan-ID για να επαληθεύσουμε ότι η null/nan τιμή αντικαταστάθηκε με unkown
+#researchers_df.filter((col("Vidwan-ID") == 56586) | (col("Vidwan-ID") == 556358)).show(truncate=False)
+#startups_df.filter((col("rank") == 4)).show(truncate=False)
+
+
+# 1) Φτιάχνουμε ενιαίο κείμενο από τις στήλες σου
+text_cols = ["Position", "Department", "Expertise", "Highest Qualification"]
+researchers_df2 = researchers_df.withColumn(
+    "text_features",
+    concat_ws(" | ", *[trim(col(c)).cast("string") for c in text_cols])
+)
+
+
+# Προαιρετικό μικρό καθάρισμα για tokenization
+researchers_df2 = researchers_df2.withColumn(
+    "text_features",
+    regexp_replace(lower(col("text_features")), r"\s+", " ")
+)
+
+# 2) Pipelines για Word2Vec → Assembler → Scaler → KMeans
+def build_word2vec_kmeans_pipeline(k=6, vector_size=200, min_count=2):
+    tok = RegexTokenizer(inputCol="text_features", outputCol="tokens", pattern="\\W+")
+    rmv = StopWordsRemover(inputCol="tokens", outputCol="tokens_no_sw")
+    w2v = MLWord2Vec(inputCol="tokens_no_sw", outputCol="w2v", vectorSize=vector_size,
+                   minCount=min_count, maxIter=20, windowSize=5, stepSize=0.025)
+
+    # Συνδυάζουμε embedding + numeric
+    assembler = VectorAssembler(inputCols=["w2v"] , outputCol="features", handleInvalid="keep")
+    scaler = StandardScaler(inputCol="features", outputCol="scaledFeatures", withMean=True, withStd=True)
+    kmeans = KMeans(featuresCol="scaledFeatures", predictionCol="prediction", k=k, seed=42)
+
+    return Pipeline(stages=[tok, rmv, w2v, assembler, scaler, kmeans])
+
+# 3) Helper: τρέχεις διάφορα k και παίρνεις Silhouette + WSSSE (trainingCost)
+def try_k_values_word2vec(df, k_list=(4,6,8)):
+    out = []
+    evaluator = ClusteringEvaluator(featuresCol="scaledFeatures")  # Silhouette (squared Euclidean)
+    for k in k_list:
+        pipe = build_word2vec_kmeans_pipeline(k=k)
+        model = pipe.fit(df)
+        pred = model.transform(df)
+        sil = evaluator.evaluate(pred)  # [-1, 1], όσο πιο κοντά στο 1 τόσο καλύτερα
+        wssse = model.stages[-1].summary.trainingCost  # «inertia»/WSSSE
+        out.append((k, float(sil), float(wssse), model))
+    return out
+
+# === Παράδειγμα χρήσης ===
+results_w2v = try_k_values_word2vec(researchers_df2, k_list=(4,6,8))
+for k, sil, wssse, _ in results_w2v:
+    print(f"[Word2Vec] k={k}: silhouette={sil:.4f}, WSSSE={wssse:.2f}")
+
+
+# Πάρε το καλύτερο μοντέλο (με max silhouette)
+best_w2v = max(results_w2v, key=lambda t: t[1])[3]
+clusters_w2v = best_w2v.transform(researchers_df2)
+clusters_w2v.select("Vidwan-ID", "Name", "prediction").show(1000, truncate=False)
+"""
+# Πάρε το καλύτερο μοντέλο (με max silhouette)
+best_w2v = max(results_w2v, key=lambda t: t[1])[3]
+clusters_w2v = best_w2v.transform(researchers_df2)
+clusters_w2v.select("Vidwan-ID", "Name", "prediction").show(10, truncate=False)
+
+"""
 
 
 
 
-# 1. Παίρνουμε τα text features από Spark
-#researchers_pd = researchers_df.select("Vidwan-ID", "Department").toPandas()
-#startups_pd = startups_df.select("rank", "industry_features").toPandas()
+#4. Finding the Optimal Number of Clusters (K)
+"""
+# Elbow Method
+wssse = []
+for k in range(2, 11):
+    kmeans = KMeans(k, seed=1)
+    model = kmeans.fit(researchers_df)
+    wssse.append(model.computeCost(researchers_df))
+
+# Plotting the Elbow Curve
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(8, 4))
+plt.plot(range(2, 11), wssse, marker='o')
+plt.title("Elbow Method For Optimal k")
+plt.xlabel("Number of clusters (k)")
+plt.ylabel("Within Set Sum of Squared Errors (WSSSE)")
+plt.grid()
+plt.show()
 
 
+# 5. Performing K-means Clustering
 
+# Define the K-means clustering model
+kmeans = KMeans(k=4, featuresCol="scaled_features", predictionCol="cluster")
+kmeans_model = kmeans.fit(researchers_df)
+# Assigning the data points to clusters
+clustered_data = kmeans_model.transform(researchers_df)
 
+# 6. Evaluating the Model
+kmeans = KMeans(k=model, seed=1) 
 
+# 7. Visualizing the Results
+# Converting to Pandas DataFrame
+clustered_data_pd = clustered_data.toPandas()
+# Visualizing the results
+plt.scatter(clustered_data_pd["SepalLengthCm"], clustered_data_pd["SepalWidthCm"], c=clustered_data_pd["cluster"], cmap='viridis')
+plt.xlabel("SepalLengthCm")
+plt.ylabel("SepalWidthCm")
+plt.title("K-means Clustering with PySpark MLlib")
+plt.colorbar().set_label("Cluster")
+plt.show()
 
-
-
+"""
