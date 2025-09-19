@@ -68,17 +68,16 @@ import pandas as pd """
 
 # main.py
 import os
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col,concat_ws,regexp_replace,lower
-from pyspark.ml.feature import StopWordsRemover, RegexTokenizer,RegexTokenizer, StopWordsRemover, Word2Vec as MLWord2Vec, VectorAssembler, StandardScaler
+from pyspark.sql.functions import col, concat_ws, regexp_replace, lower, trim, isnan, when, count
+from pyspark.ml import Pipeline
+from pyspark.ml.feature import RegexTokenizer, StopWordsRemover, Word2Vec as MLWord2Vec, VectorAssembler, StandardScaler
 from pyspark.ml.clustering import KMeans
 from pyspark.ml.feature import VectorAssembler
 from replace_missing_spark import load_and_clean_data
 from pyspark.sql.functions import isnan, when, count, col, trim
-from pyspark.mllib.feature import Word2Vec
 from pyspark.ml import Pipeline
 from pyspark.ml.evaluation import ClusteringEvaluator
-
+import matplotlib.pyplot as plt
 first_blank_workers_row,null_nan_counts_startups,null_nan_counts_researchers,startups_df, researchers_df = load_and_clean_data()
 
 # Now you can use them - 
@@ -159,20 +158,35 @@ def build_word2vec_kmeans_pipeline(k=6, vector_size=200, min_count=2):
     return Pipeline(stages=[tok, rmv, w2v, assembler, scaler, kmeans])
 
 # 3) Helper: τρέχεις διάφορα k και παίρνεις Silhouette + WSSSE (trainingCost)
-def try_k_values_word2vec(df, k_list=(4,6,8)):
-    out = []
-    evaluator = ClusteringEvaluator(featuresCol="scaledFeatures")  # Silhouette (squared Euclidean)
-    for k in k_list:
-        pipe = build_word2vec_kmeans_pipeline(k=k)
+def try_k_values_word2vec(df, k_range=range(2, 13), vector_size=200, min_count=2):
+    results = []  # κάθε στοιχείο: (k, silhouette, wssse, model)
+    evaluator = ClusteringEvaluator(featuresCol="scaledFeatures")  # Silhouette (euclidean)
+    for k in k_range:
+        pipe = build_word2vec_kmeans_pipeline(k=k, vector_size=vector_size, min_count=min_count)
         model = pipe.fit(df)
         pred = model.transform(df)
-        sil = evaluator.evaluate(pred)  # [-1, 1], όσο πιο κοντά στο 1 τόσο καλύτερα
-        wssse = model.stages[-1].summary.trainingCost  # «inertia»/WSSSE
-        out.append((k, float(sil), float(wssse), model))
-    return out
+        sil = float(evaluator.evaluate(pred))
+        wssse = float(model.stages[-1].summary.trainingCost)  # “inertia”/WSSSE
+        results.append((k, sil, wssse, model))
+        print(f"k={k:2d} | silhouette={sil:.4f} | WSSSE={wssse:.2f}")
+
+    # === Plots ===
+    ks      = [r[0] for r in results]
+    sils    = [r[1] for r in results]
+    wsss    = [r[2] for r in results]
+
+    plt.figure()
+    plt.plot(ks, sils, marker='o')
+    plt.xlabel("k"); plt.ylabel("Silhouette"); plt.title("Silhouette vs k"); plt.grid(True)
+
+    plt.figure()
+    plt.plot(ks, wsss, marker='o')
+    plt.xlabel("k"); plt.ylabel("WSSSE (trainingCost)"); plt.title("Elbow (WSSSE) vs k"); plt.grid(True)
+
+    return results
 
 # === Παράδειγμα χρήσης ===
-results_w2v = try_k_values_word2vec(researchers_df2, k_list=(4,6,8))
+results_w2v = try_k_values_word2vec(researchers_df2, k_range=(6))
 for k, sil, wssse, _ in results_w2v:
     print(f"[Word2Vec] k={k}: silhouette={sil:.4f}, WSSSE={wssse:.2f}")
 
@@ -180,7 +194,12 @@ for k, sil, wssse, _ in results_w2v:
 # Πάρε το καλύτερο μοντέλο (με max silhouette)
 best_w2v = max(results_w2v, key=lambda t: t[1])[3]
 clusters_w2v = best_w2v.transform(researchers_df2)
-clusters_w2v.select("Vidwan-ID", "Name", "prediction").show(1000, truncate=False)
+clusters_w2v.select("Vidwan-ID", "Name", "prediction").show(100, truncate=False)
+
+plt.tight_layout()
+plt.show()
+
+
 """
 # Πάρε το καλύτερο μοντέλο (με max silhouette)
 best_w2v = max(results_w2v, key=lambda t: t[1])[3]
