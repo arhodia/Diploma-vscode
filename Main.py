@@ -77,7 +77,6 @@ from pyspark.ml.clustering import KMeans
 from pyspark.ml.feature import VectorAssembler
 from replace_missing_spark import load_and_clean_data
 from pyspark.sql.functions import isnan, when, count, col, trim
-from pyspark.ml import Pipeline
 from pyspark.ml.evaluation import ClusteringEvaluator
 import matplotlib.pyplot as plt
 
@@ -318,23 +317,9 @@ data_df.select("industry", "scaled_features").show(1, truncate=False)
 
 
 
-
-'''
 # Computing WSSSE for K values from 2 to 8
 # 4) Εύρεση του βέλτιστου αριθμού clusters με Silhouette Score
 cost = []
-for k in range(2, 15):
-    kmeans = KMeans(featuresCol="scaled_features", k=k, seed=42)
-    model = kmeans.fit(data_df)
-    cost.append(model.summary.trainingCost)
-
-plt.plot(range(2, 15), cost, marker='o')
-plt.xlabel("Number of Clusters (k)")
-plt.ylabel("WSSSE (Cost)")
-plt.title("Elbow Method for Optimal k")
-plt.show()
-
-
 scores = []
 evaluator = ClusteringEvaluator(
     predictionCol="prediction",
@@ -346,12 +331,35 @@ evaluator = ClusteringEvaluator(
 for k in range(2, 15):
     kmeans = KMeans(featuresCol="scaled_features", k=k, seed=42)
     model = kmeans.fit(data_df)
+    cost.append(model.summary.trainingCost)
     predictions = model.transform(data_df)
     score = evaluator.evaluate(predictions)
     scores.append(score)
 
-plt.plot(range(2, 15), scores, marker='o')
-plt.xlabel("Number of Clusters (k)")
-plt.ylabel("Silhouette Score")
-plt.title("Silhouette Method for Optimal k")
-plt.show()'''
+
+# --- Elbow ---
+#plt.figure()
+#plt.plot(range(2, 15), cost, marker='o')
+#plt.xlabel("Number of Clusters (k)")
+#plt.ylabel("WSSSE (Cost)")
+#plt.title("Elbow Method for Optimal k")
+
+
+
+
+# --- Elbow ---
+#plt.figure()
+#plt.plot(range(2, 15), scores, marker='o')
+#plt.xlabel("Number of Clusters (k)")
+#plt.ylabel("Silhouette Score")
+#plt.title("Silhouette Method for Optimal k")
+
+#5. Performing K-means Clustering
+# Define the K-means clustering model
+kmeans = KMeans(k=7, featuresCol="scaled_features", predictionCol="prediction")
+kmeans_model = kmeans.fit(data_df)
+
+# Assigning the data points to clusters
+clusters = model.transform(data_df)
+clusters.select("industry", "prediction").show(10, truncate=False)
+clusters.groupBy("prediction").count().show()
