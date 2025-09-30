@@ -298,7 +298,7 @@ df_tok2.select("tokens", "tokens_nostop").show(10, truncate=False)
 w2v = MLWord2Vec(
     inputCol="tokens_nostop",
     outputCol="features",
-    vectorSize=10,
+    vectorSize=100,
     minCount=1,
     seed=42
 )
