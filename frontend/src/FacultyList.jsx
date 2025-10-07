@@ -5,19 +5,31 @@ export default function FacultyList() {
 
   useEffect(() => {
     fetch("http://127.0.0.1:5000/api/indian_faculty")
-      .then(res => res.json())
-      .then(setData)
-      .catch(console.error);
+      .then(async (res) => {
+        console.log("status", res.status);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        console.log("json length", json.length);
+        console.log("sample row", json[0]);
+        setData(json);
+      })
+      .catch((err) => {
+        console.error("fetch error:", err);
+      });
   }, []);
 
   return (
     <div>
       <h1>Faculty Dataset</h1>
-      <ul>
-        {data.map((row, idx) => (
-          <li key={idx}>{row['Vidwan-ID']} — {row['Department']}</li>
-        ))}
-      </ul>
+      {!data.length ? <p>no data yet</p> : (
+        <ul>
+          {data.map((row, idx) => (
+            <li key={idx}>
+              {row.Name ?? "(no Name)"} — {row.Department ?? "(no Department)"}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

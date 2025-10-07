@@ -1,6 +1,4 @@
 # main.py
-import pandas as pd
-import matplotlib.pyplot as plt
 from pyspark.sql.functions import col, concat_ws, regexp_replace, lower, trim, isnan, when, count
 from pyspark.ml import Pipeline
 from pyspark.ml.feature import RegexTokenizer, StopWordsRemover, Word2Vec as MLWord2Vec, VectorAssembler, StandardScaler
@@ -62,140 +60,105 @@ def count_null_nan_blank(df):
 #startups_df.filter((col("rank") == 4)).show(truncate=False)
 
 
-# 1) Φτιάχνουμε ενιαίο κείμενο από τις στήλες σου
+# 1) Δημιουργία νέας στήλης text_features που συνδυάζει τις text στήλες
 text_cols = ["Position", "Department", "Expertise", "Highest Qualification"]
 researchers_df2 = researchers_df.withColumn(
     "text_features",
     concat_ws(" | ", *[trim(col(c)).cast("string") for c in text_cols])
 )
-
-
 # Προαιρετικό μικρό καθάρισμα για tokenization
 researchers_df2 = researchers_df2.withColumn(
     "text_features",
     regexp_replace(lower(col("text_features")), r"\s+", " ")
 )
 
-# 2) Pipelines για Word2Vec → Assembler → Scaler → KMeans
-def build_word2vec_kmeans_pipeline(k=6, vector_size=200, min_count=2):
-    tok = RegexTokenizer(inputCol="text_features", outputCol="tokens", pattern="\\W+")
-    rmv = StopWordsRemover(inputCol="tokens", outputCol="tokens_no_sw")
-    w2v = MLWord2Vec(inputCol="tokens_no_sw", outputCol="w2v", vectorSize=vector_size,
-                   minCount=min_count, maxIter=20, windowSize=5, stepSize=0.025)
-
-    df_step = tok.transform(researchers_df2)
-    df_step = rmv.transform(df_step)
-    w2v_model = w2v.fit(df_step)
-    df_w2v = w2v_model.transform(df_step)
-    df_w2v.select("tokens_no_sw", "w2v").show(20, truncate=False)
-    # Συνδυάζουμε embedding + numeric
-    assembler = VectorAssembler(inputCols=["w2v"] , outputCol="features", handleInvalid="keep")
-    scaler = StandardScaler(inputCol="features", outputCol="scaledFeatures", withMean=True, withStd=True)
-    kmeans = KMeans(featuresCol="scaledFeatures", predictionCol="prediction", k=k, seed=42)
-
-    return Pipeline(stages=[tok, rmv, w2v, assembler, scaler, kmeans])
-
-# 3) Helper: τρέχεις διάφορα k και παίρνεις Silhouette + WSSSE (trainingCost)
-def try_k_values_word2vec(df, k_range=range(2, 13), vector_size=200, min_count=2):
-    results = []  # κάθε στοιχείο: (k, silhouette, wssse, model)
-    evaluator = ClusteringEvaluator(featuresCol="scaledFeatures")  # Silhouette (euclidean)
-    for k in k_range:
-        pipe = build_word2vec_kmeans_pipeline(k=k, vector_size=vector_size, min_count=min_count)
-        model = pipe.fit(df)
-        pred = model.transform(df)
-        sil = float(evaluator.evaluate(pred))
-        wssse = float(model.stages[-1].summary.trainingCost)  # “inertia”/WSSSE
-        results.append((k, sil, wssse, model))
-        print(f"k={k:2d} | silhouette={sil:.4f} | WSSSE={wssse:.2f}")
-
-    # === Plots ===
-    ks      = [r[0] for r in results]
-    sils    = [r[1] for r in results]
-    wsss    = [r[2] for r in results]
-"""
-    plt.figure()
-    plt.plot(ks, sils, marker='o')
-    plt.xlabel("k"); plt.ylabel("Silhouette"); plt.title("Silhouette vs k"); plt.grid(True)
-
-    plt.figure()
-    plt.plot(ks, wsss, marker='o')
-    plt.xlabel("k"); plt.ylabel("WSSSE (trainingCost)"); plt.title("Elbow (WSSSE) vs k"); plt.grid(True)
-
-    return results"""
-
-# === Παράδειγμα χρήσης ===
-"""results_w2v = try_k_values_word2vec(researchers_df2, k_range=[6])
-for k, sil, wssse, _ in results_w2v:
-    print(f"[Word2Vec] k={k}: silhouette={sil:.4f}, WSSSE={wssse:.2f}")
+#print("Μετά τη δημιουργία της στήλης text_features:")
+#researchers_df2.select("text_features").show(2, truncate=False)
 
 
-# Πάρε το καλύτερο μοντέλο (με max silhouette)
-best_w2v = max(results_w2v, key=lambda t: t[1])[3]
-clusters_w2v = best_w2v.transform(researchers_df2)
-clusters_w2v.select("Vidwan-ID", "Name", "prediction").show(100, truncate=False)"""
+tok = RegexTokenizer(inputCol="text_features", outputCol="tokens", pattern="\\W+")
+df_step = tok.transform(researchers_df2)
+#df_step.select("text_features", "tokens").show(2, truncate=False)
 
 
+rmv = StopWordsRemover(inputCol="tokens", outputCol="tokens_no_sw")
+df_step = rmv.transform(df_step)
+#df_step.select("tokens", "tokens_no_sw").show(2, truncate=False)
 
 
+# Word2Vec -> Μετατροπή tokens σε διάνυσμα (μέσος όρος λέξεων)
+w2v = MLWord2Vec(
+    inputCol="tokens_no_sw", 
+    outputCol="w2v", 
+    vectorSize=10,
+    minCount=1,
+    maxIter=20,
+    windowSize=5,
+    stepSize=0.025
+)
+w2v_model = w2v.fit(df_step)
+df_w2v = w2v_model.transform(df_step)
+#df_w2v.select("tokens_no_sw", "w2v").show(5, truncate=False)
 
-"""
-# Πάρε το καλύτερο μοντέλο (με max silhouette)
-best_w2v = max(results_w2v, key=lambda t: t[1])[3]
-clusters_w2v = best_w2v.transform(researchers_df2)
-clusters_w2v.select("Vidwan-ID", "Name", "prediction").show(10, truncate=False)
 
-"""
+# Συνδυάζουμε embedding + numeric
+scaler = StandardScaler(inputCol="w2v", outputCol="scaledFeaturesFaculty", withMean=True, withStd=True)
+scaler_model = scaler.fit(df_w2v)
+df_w2v = scaler_model.transform(df_w2v)
+#df_w2v.select("w2v", "scaledFeaturesFaculty").show(2, truncate=False)
 
+# Computing WSSSE for K values from 2 to 8
+# 4) Εύρεση του βέλτιστου αριθμού clusters με Silhouette Score
+cost = []
+scores = []
+evaluator = ClusteringEvaluator(
+    predictionCol="prediction",
+    featuresCol="scaledFeaturesFaculty",
+    metricName="silhouette",
+    distanceMeasure="squaredEuclidean"
+)
 
+for k in range(2, 15):
+    kmeans = KMeans(featuresCol="scaledFeaturesFaculty", k=k, seed=42)
+    model = kmeans.fit(df_w2v)
+    cost.append(model.summary.trainingCost)
+    predictions = model.transform(df_w2v)
+    score = evaluator.evaluate(predictions)
+    scores.append(score)
 
+# --- Elbow ---
+plt.figure()
+plt.plot(range(2, 15), cost, marker='o')
+plt.xlabel("Number of Clusters (k)")
+plt.ylabel("WSSSE (Cost)")
+plt.title("Elbow Method for Optimal k for Faculty")
 
-#4. Finding the Optimal Number of Clusters (K)
-"""
-# Elbow Method
-wssse = []
-for k in range(2, 11):
-    kmeans = KMeans(k, seed=1)
-    model = kmeans.fit(researchers_df)
-    wssse.append(model.computeCost(researchers_df))
+# --- Elbow ---
+plt.figure()
+plt.plot(range(2, 15), scores, marker='o')
+plt.xlabel("Number of Clusters (k) for Faculty")
+plt.ylabel("Silhouette Score")
+plt.title("Silhouette Method for Optimal k for Faculty")
 
-# Plotting the Elbow Curve
-import matplotlib.pyplot as plt
-
-plt.figure(figsize=(8, 4))
-plt.plot(range(2, 11), wssse, marker='o')
-plt.title("Elbow Method For Optimal k")
-plt.xlabel("Number of clusters (k)")
-plt.ylabel("Within Set Sum of Squared Errors (WSSSE)")
-plt.grid()
 plt.show()
 
-
-# 5. Performing K-means Clustering
-
+#plt.show()
+#5. Performing K-means Clustering
 # Define the K-means clustering model
-kmeans = KMeans(k=4, featuresCol="scaled_features", predictionCol="cluster")
-kmeans_model = kmeans.fit(researchers_df)
+kmeans = KMeans(k=7, featuresCol="scaledFeaturesFaculty", predictionCol="clusterFaculty")
+kmeans_model = kmeans.fit(df_w2v)
+
 # Assigning the data points to clusters
-clustered_data = kmeans_model.transform(researchers_df)
-
-# 6. Evaluating the Model
-kmeans = KMeans(k=model, seed=1) 
-
-# 7. Visualizing the Results
-# Converting to Pandas DataFrame
-clustered_data_pd = clustered_data.toPandas()
-# Visualizing the results
-plt.scatter(clustered_data_pd["SepalLengthCm"], clustered_data_pd["SepalWidthCm"], c=clustered_data_pd["cluster"], cmap='viridis')
-plt.xlabel("SepalLengthCm")
-plt.ylabel("SepalWidthCm")
-plt.title("K-means Clustering with PySpark MLlib")
-plt.colorbar().set_label("Cluster")
-plt.show()
-
-"""
+clusters = kmeans_model.transform(df_w2v)
+#Εμφάνιση των ερευνητών και σε ποιο cluster ανήκουν αυτοί οι ερευνητές-Ενδεικτικά 10 γραμμές
+clusters.select("Name", "tokens_no_sw", "clusterFaculty").show(10, truncate=False)
+#Εμφάνιση των clusters και πόσοι ερευνητές ανήκουν σε κάθε cluster
+clusters.groupBy("clusterFaculty").count().show()
 
 
-
+'''
+##### START-UPS DATASET #####
+'''
 # 3A) Καθαρισμός κειμένου (μικρά γράμματα, αφαίρεση συμβόλων, trims) + αντικατάσταση null
 startups_regex = (
     startups_df.withColumn(
@@ -209,34 +172,34 @@ startups_regex = (
 )
 
 # Προβολή πριν το tokenization
-startups_regex.select("industry", "industry_clean").show(2, truncate=False)
+#startups_regex.select("industry", "industry_clean").show(2, truncate=False)
 
 # 3B) Tokenization (σπάμε τη φράση της industry σε λέξεις)
 tok = RegexTokenizer(inputCol="industry_clean", outputCol="tokens", pattern=r"\W+")
 df_tok = tok.transform(startups_regex)
+#df_tok.select("industry_clean", "tokens").show(2, truncate=False)
 
-df_tok.select("industry_clean", "tokens").show(2, truncate=False)
 
 # (προαιρετικό) Αφαίρεση stopwords για να μείνουν πιο «ουσιαστικές» λέξεις
 rem = StopWordsRemover(inputCol="tokens", outputCol="tokens_nostop")
 df_tok2 = rem.transform(df_tok)
+#df_tok2.select("tokens", "tokens_nostop").show(10, truncate=False)
 
-df_tok2.select("tokens", "tokens_nostop").show(10, truncate=False)
 
 # 3C) Word2Vec -> Μετατροπή tokens σε διάνυσμα (μέσος όρος λέξεων)
 # - vectorSize: μέγεθος embedding (π.χ. 100)
-# - minCount=1 για να μη χαθούν σπάνιοι όροι
+# - minCount=1 για να μη χαθούν σπάνιοι όροι-Εκπαιδεύουμε το word2vec, το σχεδιάζουμε και το εκτελούμε στο αρχείο
 w2v = MLWord2Vec(
     inputCol="tokens_nostop",
     outputCol="features",
-    vectorSize=100,
+    vectorSize=10,
     minCount=1,
     seed=42
 )
 w2v_model = w2v.fit(df_tok2)
 df_feats = w2v_model.transform(df_tok2)
 
-df_feats.select("industry", "tokens_nostop", "features").show(3, truncate=False)
+#df_feats.select("industry", "tokens_nostop", "features").show(3, truncate=False)
 
 
 # 3D) StandardScaler πάνω στο διάνυσμα features → scaled_features
@@ -244,8 +207,7 @@ scaler = StandardScaler(inputCol="features", outputCol="scaled_features", withSt
 scaler_model = scaler.fit(df_feats)
 data_df = scaler_model.transform(df_feats)
 
-data_df.select("industry", "scaled_features").show(1, truncate=False)
-
+#data_df.select("industry", "scaled_features").show(1, truncate=False)
 
 
 # Computing WSSSE for K values from 2 to 8
@@ -269,28 +231,28 @@ for k in range(2, 15):
 
 
 # --- Elbow ---
-#plt.figure()
-#plt.plot(range(2, 15), cost, marker='o')
-#plt.xlabel("Number of Clusters (k)")
-#plt.ylabel("WSSSE (Cost)")
-#plt.title("Elbow Method for Optimal k")
-
-
-
+plt.figure()
+plt.plot(range(2, 15), cost, marker='o')
+plt.xlabel("Number of Clusters (k)")
+plt.ylabel("WSSSE (Cost)")
+plt.title("Elbow Method for Optimal k")
 
 # --- Elbow ---
-#plt.figure()
-#plt.plot(range(2, 15), scores, marker='o')
-#plt.xlabel("Number of Clusters (k)")
-#plt.ylabel("Silhouette Score")
-#plt.title("Silhouette Method for Optimal k")
+plt.figure()
+plt.plot(range(2, 15), scores, marker='o')
+plt.xlabel("Number of Clusters (k)")
+plt.ylabel("Silhouette Score")
+plt.title("Silhouette Method for Optimal k")
 
+#plt.show()
 #5. Performing K-means Clustering
 # Define the K-means clustering model
-kmeans = KMeans(k=7, featuresCol="scaled_features", predictionCol="prediction")
+kmeans = KMeans(k=7, featuresCol="scaled_features", predictionCol="clusterIndustry")
 kmeans_model = kmeans.fit(data_df)
 
 # Assigning the data points to clusters
-clusters = model.transform(data_df)
-clusters.select("industry", "prediction").show(10, truncate=False)
-clusters.groupBy("prediction").count().show()
+clusters = kmeans_model.transform(data_df)
+#Εμφάνιση των εταιρειών και σε ποιο cluster ανήκουν αυτες οι εταιρείες-Ενδεικτικά 10 γραμμές
+clusters.select("industry", "clusterIndustry").show(20, truncate=False)
+#Εμφάνιση των clusters και πόσες εταιρείες ανήκουν σε κάθε cluster
+clusters.groupBy("clusterIndustry").count().show()
