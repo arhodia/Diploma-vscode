@@ -1,52 +1,354 @@
-import pandas as pd 
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
+import pandas as pd
+from pyspark.ml.functions import vector_to_array
+from pyspark.ml import Pipeline
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.functions import col, trim, lower, regexp_replace
+from pyspark.ml.feature import RegexTokenizer, StopWordsRemover,StringIndexer, OneHotEncoder, VectorAssembler
+from pyspark.ml.feature import Word2Vec as MLWord2Vec, StandardScaler
+from pyspark.ml.clustering import KMeans
+from pyspark.ml.evaluation import ClusteringEvaluator
+from pyspark.sql.functions import col
 import matplotlib.pyplot as plt
+from pyspark.ml.feature import VectorAssembler
+from pyspark.sql import types as T
+import os
+from pyspark.sql import functions as F
+from pyspark.sql import types as T
+from pyspark.sql import Window
+from pyspark.ml.feature import PCA as PCAml
+
+os.environ["PYSPARK_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
+os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
+final_csv = "C:/Users/arhod/Desktop/Diploma-vscode/combined_utf8bom.csv"
+
+spark = (SparkSession.builder
+         .appName("Researchers+Companies: Unified KMeans")
+         .master("local[*]").getOrCreate())
+spark.sparkContext.setLogLevel("WARN")
+
+startups_df = spark.read.format("csv") \
+        .option("header", "true") \
+        .option("inferSchema", "true") \
+        .load("C:/Users/arhod/Desktop/Diploma-vscode/INC 5000 Companies 2019.csv")
+
+researchers_df = spark.read.format("csv") \
+        .option("header", "true") \
+        .option("inferSchema", "true") \
+        .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_researchers_5000_base.csv")
 
 
-# Load datasets (replace with your actual file paths/names)
-df_academic = pd.read_csv("c:\\Users\\arhod\\Desktop\\Diploma-vscode\\career_change_prediction_dataset.csv")
-df_startups = pd.read_csv("c:\\Users\\arhod\\Desktop\\Diploma-vscode\\INC 5000 Companies 2019.csv")          # Dataset for startups
+# Cast σε συμβατούς τύπους για κοινό schema 
+researchers_df = researchers_df.withColumn("id", F.col("id").cast("int"))
+startups_df    = startups_df.withColumn("rank", F.col("rank").cast("int"))
+
+# Ορίζουμε το ΚΟΙΝΟ σετ στηλών που θέλουμε στο ενιαίο dataset και απο τα 2 csv
+cols = ["id", "name", "surname", "researchField",
+        "company_rank", "profile", "company_name", "industry", "city"]
+
+# Ετοιμάζουμε το DF των researchers: προσθέτουμε τις «εταιρικές» στήλες ως NULL
+r2 = (researchers_df
+      .withColumn("company_rank", F.lit(None).cast("int"))
+      .withColumn("profile", F.lit(None).cast("string"))
+      .withColumn("company_name", F.lit(None).cast("string"))
+      .withColumn("industry", F.lit(None).cast("string"))
+      .withColumn("city", F.lit(None).cast("string"))
+      .select(*cols))
+
+# Ετοιμάζουμε το DF των startups: μετονομάζουμε & προσθέτουμε τις «researcher» στήλες ως NULL
+s2 = (startups_df
+      .withColumnRenamed("rank", "company_rank")
+      .withColumnRenamed("name", "company_name")
+      .select("company_rank", "profile", "company_name", "industry", "city")
+      .withColumn("id", F.lit(None).cast("int"))
+      .withColumn("name", F.lit(None).cast("string"))
+      .withColumn("surname", F.lit(None).cast("string"))
+      .withColumn("researchField", F.lit(None).cast("string"))
+      .select(*cols))
+
+# Τελικό ενιαίο DataFrame με unionByName
+combined = r2.unionByName(s2, allowMissingColumns=True)
+
+'''
+# Εμφανίζουμε μερικές εγγραφές για επαλήθευση
+combined.filter(col("id") == 123).show(truncate=False)
+combined.filter(col("company_rank") == 1).show(truncate=False)
+combined.filter(col("id") == 17.0).show(truncate=False)
+combined.filter(col("id") == 4999).show(truncate=False)
+combined.filter(col("company_rank") == 587).show(truncate=False)
+combined.filter(col("company_rank") == 789).show(truncate=False)
+'''
+#combined.printSchema() 
+#combined.toPandas().to_csv(final_csv, index=False, encoding="utf-8-sig")
+
+# Εκτυπώνω πληροφορίες για το αρχείο
+# print(f"Saved → {final_csv}")
+# rows = combined.count()
+# print(rows)
+# combined.printSchema()
+
+# Κειμενικές στήλες που έχουμε στο ενιαίο DF
+#text_cols = [c for c in ["researchField", "industry", "city"] if c in combined.columns]
+
+#λαμβάνω υπόψη όλες τις μορφές που μπορεί να πάρει μια κενή τιμή
+missing_tokens = [
+    "", " ", "  ",  # empty / whitespace
+    "nan", "NaN", "NAN",
+    "null", "NULL",
+    "none", "None", "NONE",
+    "NaT",
+    "N/A", "n/a", "NA",
+    "nand", "NAND"
+]
 
 
-# Inspect the dataframes to determine a merge strategy
-print(df_academic.head())
-print(df_startups.head())
 
 
-# Merge the datasets
-# If there is a common key (e.g., 'id'):
-# merged_df = pd.merge(df_academic, df_startups, on="id", how="inner")
+def summarize_missing(df, missing_tokens):
+    tokens = [t.strip().lower() for t in missing_tokens if t is not None]
 
-# If the datasets are to be concatenated side-by-side (ensure they have the same number of rows or align correctly):
-merged_df = pd.concat([df_academic, df_startups], axis=1)
+    schema = {f.name: f.dataType for f in df.schema.fields}
+    string_cols = [n for n, dt in schema.items() if isinstance(dt, T.StringType)]
+    float_like  = [n for n, dt in schema.items() if isinstance(dt, (T.FloatType, T.DoubleType))]
 
-# Save merged dataframe if needed
-merged_df.to_csv("merged_dataset.csv", index=False)
+    def is_missing_str(colname):
+        c = F.trim(F.col(colname))
+        return F.col(colname).isNull() | (c == "") | F.lower(c).isin(tokens)
 
-# Preprocessing for clustering:
-# Select numeric columns for clustering (or convert categorical to numeric)
-numeric_cols = merged_df.select_dtypes(include=["int64", "float64"]).columns
-data_for_clustering = merged_df[numeric_cols].dropna()  # Optionally handle missing values differently
+    # aggregations ανά στήλη
+    agg_exprs = []
+    for c in df.columns:
+        if c in string_cols:
+            cond = is_missing_str(c)
+        elif c in float_like:
+            cond = F.col(c).isNull() | F.isnan(F.col(c))
+        else:
+            cond = F.col(c).isNull()
+        agg_exprs.append(F.sum(F.when(cond, 1).otherwise(0)).alias(c))
 
-# Standardize the features
-scaler = StandardScaler()
-data_scaled = scaler.fit_transform(data_for_clustering)
+    counts_row = df.agg(*agg_exprs).collect()[0].asDict()
 
-# Determine the number of clusters (e.g., using the elbow method, here we choose 3 as an example)
-kmeans = KMeans(n_clusters=3, random_state=42)
-clusters = kmeans.fit_predict(data_scaled)
+    summary_min = (
+        df.sparkSession.createDataFrame([(k, int(v)) for k, v in counts_row.items()],
+                                        ["column", "missing_count"])
+          .orderBy(F.desc("missing_count"))
+    )
 
-# Add cluster results to the dataframe
-merged_df.loc[data_for_clustering.index, 'cluster'] = clusters
+    missing_cols = [r["column"]
+                    for r in summary_min.filter(F.col("missing_count") > 0)
+                                        .select("column").collect()]
+    return summary_min, missing_cols
 
-# Optional: Visualize the clusters using the first two numeric features
-plt.figure(figsize=(8, 6))
-plt.scatter(data_scaled[:, 0], data_scaled[:, 1], c=clusters, cmap="viridis", alpha=0.6)
-plt.title("K-means Clustering")
-plt.xlabel("Scaled Feature 1")
-plt.ylabel("Scaled Feature 2")
+
+summary_min, missing_cols = summarize_missing(combined, missing_tokens)
+
+def replace_missing_values(df, missing_tokens, cols=None, unknown="unknown",int_fill=-1,  long_fill=-1):
+    
+    # κανονικοποίηση tokens
+    tokens = [t.strip().lower() for t in missing_tokens if t is not None]
+    
+    schema = {f.name: f.dataType for f in df.schema.fields}
+    # αν δεν δοθούν ρητά cols, γέμισε όλες τις string στήλες
+    if cols is None:
+        cols = [f.name for f in df.schema.fields if isinstance(f.dataType, T.StringType)]
+    
+    def is_missing_str(cname):
+        c = F.trim(F.col(cname))
+        return F.col(cname).isNull() | (c == "") | F.lower(c).isin(tokens)
+
+    out = df
+    # Για κάθε επιλεγμένη στήλη, αντικατάστησε ανάλογα με τον τύπο της
+    for c in cols:
+        dt = schema.get(c)
+
+        if isinstance(dt, T.StringType):
+            # STRING: αντικατάσταση όλων των "κενών" με 'unknown'
+            out = out.withColumn(
+                c,
+                F.when(is_missing_str(c), F.lit(unknown)).otherwise(F.col(c))
+            )
+
+        elif isinstance(dt, T.IntegerType):
+            # INT: αντικατάσταση ΜΟΝΟ των NULL με int_fill (π.χ. -1)
+            out = out.withColumn(
+                c,
+                F.when(F.col(c).isNull(), F.lit(int_fill).cast("int")).otherwise(F.col(c))
+            )
+
+        elif isinstance(dt, T.LongType):
+            # LONG: αντικατάσταση ΜΟΝΟ των NULL με long_fill (π.χ. -1)
+            out = out.withColumn(
+                c,
+                F.when(F.col(c).isNull(), F.lit(long_fill).cast("long")).otherwise(F.col(c))
+            )
+
+        else:
+            # Άλλοι τύποι (Float/Double/Date/Timestamp/Boolean/Array/Struct κ.λπ.) δεν πειράζονται εδώ.
+            # Αν χρειαστεί, μπορείς να προσθέσεις ανάλογους κανόνες όπως παραπάνω.
+            pass
+
+    return out
+
+clean_combined = replace_missing_values(combined,missing_tokens,cols=missing_cols,unknown="unknown",int_fill=-1,long_fill=-1)
+
+
+
+# Γρήγορος έλεγχος
+clean_combined.select("id", "company_rank", "name", "researchField","company_name").show(10, truncate=False)
+
+rf_norm  = F.lower(F.trim(F.col("researchField")))
+ind_norm = F.lower(F.trim(F.col("industry")))
+
+df_topics = (
+    clean_combined
+    .withColumn(
+        "topic_merged",
+        F.when(rf_norm.isNotNull() & (rf_norm != "") & (rf_norm != "unknown"), F.col("researchField"))
+         .when(ind_norm.isNotNull() & (ind_norm != "") & (ind_norm != "unknown"), F.col("industry"))
+         .otherwise(F.lit("unknown"))
+    )
+      # προαιρετικό καθάρισμα/ομογενοποίηση για το NLP
+    .withColumn(
+        "topic_merged_norm",
+        F.trim(F.regexp_replace(F.lower(F.col("topic_merged")), r"[^a-z0-9\s]+", " "))
+    )
+)
+
+#df_topics.select("topic_merged_norm").show(10, truncate=False)
+
+train_df = df_topics.filter(F.col("topic_merged_norm") != "unknown")
+
+tok = RegexTokenizer(inputCol="topic_merged_norm", outputCol="tokens", pattern="\\W+")
+rmv = StopWordsRemover(inputCol="tokens", outputCol="tokens_no_sw")
+w2v = MLWord2Vec(
+    inputCol="tokens_no_sw", outputCol="w2v",
+    vectorSize=400, minCount=1, seed=42, maxIter=20, windowSize=5
+)
+scaler = StandardScaler(inputCol="w2v", outputCol="scaled_features", withMean=True, withStd=True)
+
+
+text_pipe = Pipeline(stages=[tok, rmv, w2v, scaler])
+text_model = text_pipe.fit(train_df)
+
+
+
+# Μετασχηματισμός ΟΛΩΝ των εγγραφών (ώστε να πάρουν features ακόμη κι αν είναι 'unknown')
+feats_all   = text_model.transform(df_topics)
+train_feats = feats_all.filter(F.col("topic_merged_norm") != "unknown").select("scaled_features", "topic_merged_norm").cache()
+
+
+# Computing WSSSE for K values from 2 to 8
+wssse_values = []
+
+# Evaluator: Silhouette με cosine (ταιριάζει καλύτερα σε embeddings)
+evaluator = ClusteringEvaluator(
+    predictionCol="prediction",
+    featuresCol="scaled_features",
+    metricName="silhouette",
+    distanceMeasure="cosine"
+)
+
+
+# Διάστημα τιμών k (όπως είχες, 10..19). Μπορείς να αλλάξεις εύκολα.
+ks = list(range(10, 20))
+
+sil_scores = []
+models_by_k = {}
+
+best_sil = float("-inf")
+best_k = None
+best_model = None
+
+for k in ks:
+    km = KMeans(featuresCol="scaled_features", k=k, seed=42, distanceMeasure="cosine")
+    model = km.fit(train_feats)
+    preds = model.transform(train_feats)
+    sil = evaluator.evaluate(preds)
+    sil_scores.append(sil)
+    models_by_k[k] = model
+    print(f"k={k:2d} → silhouette={sil:.6f}")
+    
+    # Κρατάμε το καλύτερο. Αν ισοπαλία ~0.01, προτιμάμε μικρότερο k (πιο απλό μοντέλο).
+    if (sil > best_sil + 1e-6) or (abs(sil - best_sil) <= 0.01 and (best_k is None or k < best_k)):
+        best_sil = sil
+        best_k = k
+        best_model = model
+
+print(f"\nBest k = {best_k} with silhouette = {best_sil:.6f}")
+
+# Plot Silhouette vs k
+plt.figure()
+plt.plot(ks, sil_scores, marker='o')
+plt.xlabel("Number of Clusters (k)")
+plt.ylabel("Silhouette")
+plt.title("Silhouette vs k (cosine)")
+plt.grid(True)
 plt.show()
 
-# Print the centroids in the scaled feature space
-print("Cluster Centers:\n", kmeans.cluster_centers_)
+# --- Τελικό μοντέλο & αναθέσεις ---
+# Εκπαιδευτικό σύνολο (χωρίς unknown) – μεγεθος clusters
+print("Cluster sizes on training set:", best_model.summary.clusterSizes)
+
+# Κάνε assign σε ΟΛΕΣ τις εγγραφές (και σε unknown) χρησιμοποιώντας τα features που ήδη έχεις
+clusters_all = (best_model
+    .transform(feats_all.select("scaled_features", "topic_merged_norm"))
+    .withColumnRenamed("prediction", "cluster")
+)
+
+# Μέγεθος clusters στο σύνολο (όλες οι εγγραφές)
+clusters_all.groupBy("cluster").count().orderBy("cluster").show(truncate=False)
+
+
+# Ποιο cluster “κερδίζει” για κάθε topic_merged_norm (με βάση την πλειοψηφία των εγγραφών)
+topic2cluster = (
+    clusters_all.groupBy("topic_merged_norm", "cluster").count()
+    .withColumn("rnk", F.row_number().over(
+        Window.partitionBy("topic_merged_norm").orderBy(F.desc("count"))
+    ))
+    .filter(F.col("rnk") == 1)
+    .drop("rnk")
+    .orderBy("cluster", F.desc("count"))
+)
+
+# Δείξε μερικά αποτελέσματα
+topic2cluster.show(50, truncate=False)
+
+# Top 15 θέματα ανά cluster
+top_topics_per_cluster = (
+    clusters_all.groupBy("cluster", "topic_merged_norm").count()
+    .withColumn("rnk", F.row_number().over(
+        Window.partitionBy("cluster").orderBy(F.desc("count"))
+    ))
+    .filter(F.col("rnk") <= 15)
+    .orderBy("cluster", "rnk")
+)
+
+top_topics_per_cluster.show(100, truncate=False)
+
+
+# PCA σε 2 διαστάσεις πάνω στα TRAIN (για να δεις διαχωρισμό)
+
+train_pred = best_model.transform(train_feats)
+pca = PCAml(k=2, inputCol="scaled_features", outputCol="pca2")
+pca_model = pca.fit(train_pred)
+train_2d = pca_model.transform(train_pred)
+
+# Μετατροπή vector -> array για indexing
+train_2d = train_2d.withColumn("pca2_arr", vector_to_array("pca2"))
+
+pdf = (train_2d
+       .select(F.col("pca2_arr")[0].alias("pc1"),
+               F.col("pca2_arr")[1].alias("pc2"),
+               F.col("prediction").alias("cluster"))
+       .sample(False, 0.2, seed=42)
+       .toPandas())
+
+# Scatter
+plt.figure()
+plt.scatter(pdf["pc1"], pdf["pc2"], c=pdf["cluster"])
+plt.xlabel("PC1"); plt.ylabel("PC2")
+plt.title(f"KMeans (k={best_k}) — PCA(2D)")
+plt.colorbar(label="Cluster")
+plt.tight_layout()
+plt.show()
+

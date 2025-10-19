@@ -90,7 +90,7 @@ df_step = rmv.transform(df_step)
 w2v = MLWord2Vec(
     inputCol="tokens_no_sw", 
     outputCol="w2v", 
-    vectorSize=10,
+    vectorSize=300,
     minCount=1,
     maxIter=20,
     windowSize=5,
@@ -106,6 +106,7 @@ scaler = StandardScaler(inputCol="w2v", outputCol="scaledFeaturesFaculty", withM
 scaler_model = scaler.fit(df_w2v)
 df_w2v = scaler_model.transform(df_w2v)
 #df_w2v.select("w2v", "scaledFeaturesFaculty").show(2, truncate=False)
+
 
 # Computing WSSSE for K values from 2 to 8
 # 4) Εύρεση του βέλτιστου αριθμού clusters με Silhouette Score
@@ -192,7 +193,7 @@ df_tok2 = rem.transform(df_tok)
 w2v = MLWord2Vec(
     inputCol="tokens_nostop",
     outputCol="features",
-    vectorSize=10,
+    vectorSize=300,
     minCount=1,
     seed=42
 )
@@ -244,7 +245,7 @@ plt.xlabel("Number of Clusters (k)")
 plt.ylabel("Silhouette Score")
 plt.title("Silhouette Method for Optimal k")
 
-#plt.show()
+plt.show()
 #5. Performing K-means Clustering
 # Define the K-means clustering model
 kmeans = KMeans(k=7, featuresCol="scaled_features", predictionCol="clusterIndustry")
