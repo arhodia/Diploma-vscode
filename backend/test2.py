@@ -1,30 +1,25 @@
-import pandas as pd
+from matplotlib import pyplot as plt
 from pyspark.ml.functions import vector_to_array
 from pyspark.ml import Pipeline
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.functions import col, trim, lower, regexp_replace
-from pyspark.ml.feature import RegexTokenizer, StopWordsRemover,StringIndexer, OneHotEncoder, VectorAssembler
+from pyspark.ml.feature import RegexTokenizer, StopWordsRemover
 from pyspark.ml.feature import Word2Vec as MLWord2Vec, StandardScaler
 from pyspark.ml.clustering import KMeans
 from pyspark.ml.evaluation import ClusteringEvaluator
-from pyspark.sql.functions import col
-import matplotlib.pyplot as plt
-from pyspark.ml.feature import VectorAssembler
 from pyspark.sql import types as T
 import os
 from pyspark.sql import functions as F
-from pyspark.sql import types as T
-from pyspark.sql import Window
 from pyspark.ml.feature import PCA as PCAml
+from pyspark.sql.window import Window
 
 os.environ["PYSPARK_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 final_csv = "C:/Users/arhod/Desktop/Diploma-vscode/combined_utf8bom.csv"
 
 spark = (SparkSession.builder
-         .appName("Researchers+Companies: Unified KMeans")
-         .master("local[*]").getOrCreate())
+            .appName("Researchers+Companies: Unified KMeans")
+            .master("local[*]").getOrCreate())
 spark.sparkContext.setLogLevel("WARN")
 
 startups_df = spark.read.format("csv") \
@@ -48,23 +43,23 @@ cols = ["id", "name", "surname", "researchField",
 
 # Ετοιμάζουμε το DF των researchers: προσθέτουμε τις «εταιρικές» στήλες ως NULL
 r2 = (researchers_df
-      .withColumn("company_rank", F.lit(None).cast("int"))
-      .withColumn("profile", F.lit(None).cast("string"))
-      .withColumn("company_name", F.lit(None).cast("string"))
-      .withColumn("industry", F.lit(None).cast("string"))
-      .withColumn("city", F.lit(None).cast("string"))
-      .select(*cols))
+    .withColumn("company_rank", F.lit(None).cast("int"))
+    .withColumn("profile", F.lit(None).cast("string"))
+    .withColumn("company_name", F.lit(None).cast("string"))
+    .withColumn("industry", F.lit(None).cast("string"))
+    .withColumn("city", F.lit(None).cast("string"))
+    .select(*cols))
 
 # Ετοιμάζουμε το DF των startups: μετονομάζουμε & προσθέτουμε τις «researcher» στήλες ως NULL
 s2 = (startups_df
-      .withColumnRenamed("rank", "company_rank")
-      .withColumnRenamed("name", "company_name")
-      .select("company_rank", "profile", "company_name", "industry", "city")
-      .withColumn("id", F.lit(None).cast("int"))
-      .withColumn("name", F.lit(None).cast("string"))
-      .withColumn("surname", F.lit(None).cast("string"))
-      .withColumn("researchField", F.lit(None).cast("string"))
-      .select(*cols))
+    .withColumnRenamed("rank", "company_rank")
+    .withColumnRenamed("name", "company_name")
+    .select("company_rank", "profile", "company_name", "industry", "city")
+    .withColumn("id", F.lit(None).cast("int"))
+    .withColumn("name", F.lit(None).cast("string"))
+    .withColumn("surname", F.lit(None).cast("string"))
+    .withColumn("researchField", F.lit(None).cast("string"))
+    .select(*cols))
 
 # Τελικό ενιαίο DataFrame με unionByName
 combined = r2.unionByName(s2, allowMissingColumns=True)
@@ -80,7 +75,6 @@ combined.filter(col("company_rank") == 789).show(truncate=False)
 '''
 #combined.printSchema() 
 #combined.toPandas().to_csv(final_csv, index=False, encoding="utf-8-sig")
-
 # Εκτυπώνω πληροφορίες για το αρχείο
 # print(f"Saved → {final_csv}")
 # rows = combined.count()
@@ -100,9 +94,6 @@ missing_tokens = [
     "N/A", "n/a", "NA",
     "nand", "NAND"
 ]
-
-
-
 
 def summarize_missing(df, missing_tokens):
     tokens = [t.strip().lower() for t in missing_tokens if t is not None]
@@ -131,14 +122,13 @@ def summarize_missing(df, missing_tokens):
     summary_min = (
         df.sparkSession.createDataFrame([(k, int(v)) for k, v in counts_row.items()],
                                         ["column", "missing_count"])
-          .orderBy(F.desc("missing_count"))
+        .orderBy(F.desc("missing_count"))
     )
 
     missing_cols = [r["column"]
                     for r in summary_min.filter(F.col("missing_count") > 0)
                                         .select("column").collect()]
     return summary_min, missing_cols
-
 
 summary_min, missing_cols = summarize_missing(combined, missing_tokens)
 
@@ -191,9 +181,6 @@ def replace_missing_values(df, missing_tokens, cols=None, unknown="unknown",int_
 
 clean_combined = replace_missing_values(combined,missing_tokens,cols=missing_cols,unknown="unknown",int_fill=-1,long_fill=-1)
 
-
-
-# Γρήγορος έλεγχος
 clean_combined.select("id", "company_rank", "name", "researchField","company_name").show(10, truncate=False)
 
 rf_norm  = F.lower(F.trim(F.col("researchField")))
@@ -204,17 +191,17 @@ df_topics = (
     .withColumn(
         "topic_merged",
         F.when(rf_norm.isNotNull() & (rf_norm != "") & (rf_norm != "unknown"), F.col("researchField"))
-         .when(ind_norm.isNotNull() & (ind_norm != "") & (ind_norm != "unknown"), F.col("industry"))
-         .otherwise(F.lit("unknown"))
+        .when(ind_norm.isNotNull() & (ind_norm != "") & (ind_norm != "unknown"), F.col("industry"))
+        .otherwise(F.lit("unknown"))
     )
-      # προαιρετικό καθάρισμα/ομογενοποίηση για το NLP
+    # προαιρετικό καθάρισμα/ομογενοποίηση για το NLP
     .withColumn(
         "topic_merged_norm",
         F.trim(F.regexp_replace(F.lower(F.col("topic_merged")), r"[^a-z0-9\s]+", " "))
     )
 )
 
-#df_topics.select("topic_merged_norm").show(10, truncate=False)
+df_topics.select("topic_merged_norm").show(10, truncate=False)
 
 train_df = df_topics.filter(F.col("topic_merged_norm") != "unknown")
 
@@ -225,18 +212,15 @@ w2v = MLWord2Vec(
     vectorSize=400, minCount=1, seed=42, maxIter=20, windowSize=5
 )
 scaler = StandardScaler(inputCol="w2v", outputCol="scaled_features", withMean=True, withStd=True)
-
-
 text_pipe = Pipeline(stages=[tok, rmv, w2v, scaler])
 text_model = text_pipe.fit(train_df)
-
-
+#train_df.show(5, truncate=False)
 
 # Μετασχηματισμός ΟΛΩΝ των εγγραφών (ώστε να πάρουν features ακόμη κι αν είναι 'unknown')
 feats_all   = text_model.transform(df_topics)
 train_feats = feats_all.filter(F.col("topic_merged_norm") != "unknown").select("scaled_features", "topic_merged_norm").cache()
 
-
+#feats_all.show(5, truncate=False)
 # Computing WSSSE for K values from 2 to 8
 wssse_values = []
 
@@ -247,7 +231,6 @@ evaluator = ClusteringEvaluator(
     metricName="silhouette",
     distanceMeasure="cosine"
 )
-
 
 # Διάστημα τιμών k (όπως είχες, 10..19). Μπορείς να αλλάξεις εύκολα.
 ks = list(range(10, 20))
@@ -266,7 +249,7 @@ for k in ks:
     sil = evaluator.evaluate(preds)
     sil_scores.append(sil)
     models_by_k[k] = model
-    print(f"k={k:2d} → silhouette={sil:.6f}")
+    #print(f"k={k:2d} → silhouette={sil:.6f}")
     
     # Κρατάμε το καλύτερο. Αν ισοπαλία ~0.01, προτιμάμε μικρότερο k (πιο απλό μοντέλο).
     if (sil > best_sil + 1e-6) or (abs(sil - best_sil) <= 0.01 and (best_k is None or k < best_k)):
@@ -275,7 +258,6 @@ for k in ks:
         best_model = model
 
 print(f"\nBest k = {best_k} with silhouette = {best_sil:.6f}")
-
 # Plot Silhouette vs k
 plt.figure()
 plt.plot(ks, sil_scores, marker='o')
@@ -287,7 +269,7 @@ plt.show()
 
 # --- Τελικό μοντέλο & αναθέσεις ---
 # Εκπαιδευτικό σύνολο (χωρίς unknown) – μεγεθος clusters
-print("Cluster sizes on training set:", best_model.summary.clusterSizes)
+#print("Cluster sizes on training set:", best_model.summary.clusterSizes)
 
 # Κάνε assign σε ΟΛΕΣ τις εγγραφές (και σε unknown) χρησιμοποιώντας τα features που ήδη έχεις
 clusters_all = (best_model
@@ -297,7 +279,6 @@ clusters_all = (best_model
 
 # Μέγεθος clusters στο σύνολο (όλες οι εγγραφές)
 clusters_all.groupBy("cluster").count().orderBy("cluster").show(truncate=False)
-
 
 # Ποιο cluster “κερδίζει” για κάθε topic_merged_norm (με βάση την πλειοψηφία των εγγραφών)
 topic2cluster = (
@@ -323,11 +304,9 @@ top_topics_per_cluster = (
     .orderBy("cluster", "rnk")
 )
 
-top_topics_per_cluster.show(100, truncate=False)
+top_topics_per_cluster.show(10, truncate=False)
 
-
-# PCA σε 2 διαστάσεις πάνω στα TRAIN (για να δεις διαχωρισμό)
-
+#PCA σε 2 διαστάσεις πάνω στα TRAIN (για να δεις διαχωρισμό)
 train_pred = best_model.transform(train_feats)
 pca = PCAml(k=2, inputCol="scaled_features", outputCol="pca2")
 pca_model = pca.fit(train_pred)
@@ -337,11 +316,11 @@ train_2d = pca_model.transform(train_pred)
 train_2d = train_2d.withColumn("pca2_arr", vector_to_array("pca2"))
 
 pdf = (train_2d
-       .select(F.col("pca2_arr")[0].alias("pc1"),
-               F.col("pca2_arr")[1].alias("pc2"),
-               F.col("prediction").alias("cluster"))
-       .sample(False, 0.2, seed=42)
-       .toPandas())
+    .select(F.col("pca2_arr")[0].alias("pc1"),
+            F.col("pca2_arr")[1].alias("pc2"),
+            F.col("prediction").alias("cluster"))
+    .sample(False, 0.2, seed=42)
+    .toPandas())
 
 # Scatter
 plt.figure()
@@ -352,3 +331,12 @@ plt.colorbar(label="Cluster")
 plt.tight_layout()
 plt.show()
 
+# Μεγέθη clusters (στο train set)
+print("Cluster sizes:", best_model.summary.clusterSizes)
+
+# Top θέματα ανά cluster (ποια topics «κατοικούν» σε κάθε ομάδα)
+(clusters_all.groupBy("cluster","topic_merged_norm").count()
+.withColumn("rnk", F.row_number().over(Window.partitionBy("cluster").orderBy(F.desc("count"))))
+.filter(F.col("rnk")<=10).orderBy("cluster","rnk")).show(truncate=False)
+print(clusters_all.columns)
+clusters_all.show(1, truncate=False)
