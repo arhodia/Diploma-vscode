@@ -201,10 +201,9 @@ df_topics = (
     )
 )
 
-df_topics.select("topic_merged_norm").show(10, truncate=False)
-
 train_df = df_topics.filter(F.col("topic_merged_norm") != "unknown")
 
+#Ακολουθούν 6 εντολές 
 tok = RegexTokenizer(inputCol="topic_merged_norm", outputCol="tokens", pattern="\\W+")
 rmv = StopWordsRemover(inputCol="tokens", outputCol="tokens_no_sw")
 w2v = MLWord2Vec(
@@ -220,7 +219,9 @@ text_model = text_pipe.fit(train_df)
 feats_all   = text_model.transform(df_topics)
 train_feats = feats_all.filter(F.col("topic_merged_norm") != "unknown").select("scaled_features", "topic_merged_norm").cache()
 
-#feats_all.show(5, truncate=False)
+print(feats_all.columns)
+feats_all.select("topic_merged_norm", "scaled_features").show(1, truncate=False)
+
 # Computing WSSSE for K values from 2 to 8
 wssse_values = []
 
@@ -257,30 +258,25 @@ for k in ks:
         best_k = k
         best_model = model
 
-print(f"\nBest k = {best_k} with silhouette = {best_sil:.6f}")
+#print(f"\nBest k = {best_k} with silhouette = {best_sil:.6f}")
 # Plot Silhouette vs k
-plt.figure()
-plt.plot(ks, sil_scores, marker='o')
-plt.xlabel("Number of Clusters (k)")
-plt.ylabel("Silhouette")
-plt.title("Silhouette vs k (cosine)")
-plt.grid(True)
-plt.show()
-
-# --- Τελικό μοντέλο & αναθέσεις ---
-# Εκπαιδευτικό σύνολο (χωρίς unknown) – μεγεθος clusters
-#print("Cluster sizes on training set:", best_model.summary.clusterSizes)
+#plt.figure()
+#plt.plot(ks, sil_scores, marker='o')
+#plt.xlabel("Number of Clusters (k)")
+#plt.ylabel("Silhouette")
+#plt.title("Silhouette vs k (cosine)")
+#plt.grid(True)
+#plt.show()
 
 # Κάνε assign σε ΟΛΕΣ τις εγγραφές (και σε unknown) χρησιμοποιώντας τα features που ήδη έχεις
 clusters_all = (best_model
-    .transform(feats_all.select("scaled_features", "topic_merged_norm"))
+    .transform(feats_all.select("scaled_features", "topic_merged_norm",'id', 'name', 'surname', 'researchField', 'company_rank', 'profile', 'company_name', 'industry', 'city'))
     .withColumnRenamed("prediction", "cluster")
 )
 
-# Μέγεθος clusters στο σύνολο (όλες οι εγγραφές)
-clusters_all.groupBy("cluster").count().orderBy("cluster").show(truncate=False)
 
 # Ποιο cluster “κερδίζει” για κάθε topic_merged_norm (με βάση την πλειοψηφία των εγγραφών)
+"""
 topic2cluster = (
     clusters_all.groupBy("topic_merged_norm", "cluster").count()
     .withColumn("rnk", F.row_number().over(
@@ -289,22 +285,7 @@ topic2cluster = (
     .filter(F.col("rnk") == 1)
     .drop("rnk")
     .orderBy("cluster", F.desc("count"))
-)
-
-# Δείξε μερικά αποτελέσματα
-topic2cluster.show(50, truncate=False)
-
-# Top 15 θέματα ανά cluster
-top_topics_per_cluster = (
-    clusters_all.groupBy("cluster", "topic_merged_norm").count()
-    .withColumn("rnk", F.row_number().over(
-        Window.partitionBy("cluster").orderBy(F.desc("count"))
-    ))
-    .filter(F.col("rnk") <= 15)
-    .orderBy("cluster", "rnk")
-)
-
-top_topics_per_cluster.show(10, truncate=False)
+)"""
 
 #PCA σε 2 διαστάσεις πάνω στα TRAIN (για να δεις διαχωρισμό)
 train_pred = best_model.transform(train_feats)
@@ -323,6 +304,7 @@ pdf = (train_2d
     .toPandas())
 
 # Scatter
+"""
 plt.figure()
 plt.scatter(pdf["pc1"], pdf["pc2"], c=pdf["cluster"])
 plt.xlabel("PC1"); plt.ylabel("PC2")
@@ -330,13 +312,23 @@ plt.title(f"KMeans (k={best_k}) — PCA(2D)")
 plt.colorbar(label="Cluster")
 plt.tight_layout()
 plt.show()
-
+"""
 # Μεγέθη clusters (στο train set)
-print("Cluster sizes:", best_model.summary.clusterSizes)
+#print("Cluster sizes:", best_model.summary.clusterSizes)
 
-# Top θέματα ανά cluster (ποια topics «κατοικούν» σε κάθε ομάδα)
-(clusters_all.groupBy("cluster","topic_merged_norm").count()
-.withColumn("rnk", F.row_number().over(Window.partitionBy("cluster").orderBy(F.desc("count"))))
-.filter(F.col("rnk")<=10).orderBy("cluster","rnk")).show(truncate=False)
+
+#print(train_feats.columns)
+#df_topics
+
+print("clean_combined columns:")
+print(clean_combined.columns)
+print("\ndf_topics columns:")
+print(df_topics.columns)
+print("\ntrain_df columns:")
+print(train_df.columns)
+print("\nfeats_all columns:")
+print(feats_all.columns)
+print("\nclusters_all columns:")
 print(clusters_all.columns)
-clusters_all.show(1, truncate=False)
+clusters_all.drop("scaled_features").show(1, truncate=False)
+#clean_combined

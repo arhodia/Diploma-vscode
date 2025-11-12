@@ -202,8 +202,6 @@ def cluster_topics_from_files(startups_file, researchers_file):
         )
     )
 
-    #df_topics.select("topic_merged_norm").show(10, truncate=False)
-
     train_df = df_topics.filter(F.col("topic_merged_norm") != "unknown")
 
     tok = RegexTokenizer(inputCol="topic_merged_norm", outputCol="tokens", pattern="\\W+")
@@ -335,15 +333,12 @@ def cluster_topics_from_files(startups_file, researchers_file):
 
     # Μεγέθη clusters (στο train set)
     #print("Cluster sizes:", best_model.summary.clusterSizes)
+    # για να δεις τη δομή (τύπους και ονόματα στηλών)
+    clean_combined.printSchema()
 
-    # Top θέματα ανά cluster (ποια topics «κατοικούν» σε κάθε ομάδα)
-    #(clusters_all.groupBy("cluster","topic_merged_norm").count()
-    #.withColumn("rnk", F.row_number().over(Window.partitionBy("cluster").orderBy(F.desc("count"))))
-    #.filter(F.col("rnk")<=10).orderBy("cluster","rnk")).show(truncate=False)
-    
-    #print(clusters_all.columns)
-    #clusters_all.show(3, truncate=False)
+    # για να δεις τα ονόματα των στηλών
+    print(clean_combined.columns)
+
+    # για να δεις δείγμα γραμμών στη κονσόλα
+    clean_combined.show(5, truncate=False)
     return clusters_all
-# Πόση διακύμανση εξηγεί το PCA(2D);
-#ev = pca_model.explainedVariance.toArray()
-#print(f"PCA(2) explained variance: PC1={ev[0]:.2%}, PC2={ev[1]:.2%}, total={(ev[0]+ev[1]):.2%}")
