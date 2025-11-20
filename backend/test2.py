@@ -1,3 +1,4 @@
+from turtle import pd
 from matplotlib import pyplot as plt
 from pyspark.ml.functions import vector_to_array
 from pyspark.ml import Pipeline
@@ -12,6 +13,8 @@ import os
 from pyspark.sql import functions as F
 from pyspark.ml.feature import PCA as PCAml
 from pyspark.sql.window import Window
+from pyspark.sql import Row
+import pyspark.sql.functions as F
 
 os.environ["PYSPARK_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
@@ -181,11 +184,11 @@ def replace_missing_values(df, missing_tokens, cols=None, unknown="unknown",int_
 
 clean_combined = replace_missing_values(combined,missing_tokens,cols=missing_cols,unknown="unknown",int_fill=-1,long_fill=-1)
 
-clean_combined.select("id", "company_rank", "name", "researchField","company_name").show(10, truncate=False)
-
 rf_norm  = F.lower(F.trim(F.col("researchField")))
 ind_norm = F.lower(F.trim(F.col("industry")))
-
+#Αναθέτει τιμή από τη στήλη "researchField" αν η στήλη rf_norm είναι μη κενή, μη "unknown".
+#Αν όχι,αναθέτει τιμή από "industry" όταν ind_norm πληροί το ίδιο κριτήριο. 
+#Στην αντίθετη περίπτωση βάζει "unknown".
 df_topics = (
     clean_combined
     .withColumn(
@@ -194,7 +197,7 @@ df_topics = (
         .when(ind_norm.isNotNull() & (ind_norm != "") & (ind_norm != "unknown"), F.col("industry"))
         .otherwise(F.lit("unknown"))
     )
-    # προαιρετικό καθάρισμα/ομογενοποίηση για το NLP
+    # Καθαρίζει και κανονικοποιεί τη στήλη "topic_merged" σε πεζά, αφαιρώντας μη αλφαριθμητικούς χαρακτήρες.
     .withColumn(
         "topic_merged_norm",
         F.trim(F.regexp_replace(F.lower(F.col("topic_merged")), r"[^a-z0-9\s]+", " "))
@@ -215,12 +218,20 @@ text_pipe = Pipeline(stages=[tok, rmv, w2v, scaler])
 text_model = text_pipe.fit(train_df)
 #train_df.show(5, truncate=False)
 
-# Μετασχηματισμός ΟΛΩΝ των εγγραφών (ώστε να πάρουν features ακόμη κι αν είναι 'unknown')
-feats_all   = text_model.transform(df_topics)
-train_feats = feats_all.filter(F.col("topic_merged_norm") != "unknown").select("scaled_features", "topic_merged_norm").cache()
 
-print(feats_all.columns)
-feats_all.select("topic_merged_norm", "scaled_features").show(1, truncate=False)
+feats_all   = text_model.transform(df_topics)
+topic_merged_norm_parameter = "construction"
+
+# 3. Add weightCol to feats_all
+feats_all = feats_all.withColumn(
+    "weightCol",
+    F.when(F.col("topic_merged_norm") == topic_merged_norm_parameter, F.lit(3)).otherwise(F.lit(1))
+)
+train_feats = feats_all.filter(F.col("topic_merged_norm") != "unknown") \
+                       .select("scaled_features", "topic_merged_norm", "weightCol") \
+                       .cache()
+
+
 
 # Computing WSSSE for K values from 2 to 8
 wssse_values = []
@@ -244,7 +255,7 @@ best_k = None
 best_model = None
 
 for k in ks:
-    km = KMeans(featuresCol="scaled_features", k=k, seed=42, distanceMeasure="cosine")
+    km = KMeans(featuresCol="scaled_features", k=k, seed=42, distanceMeasure="cosine", weightCol="weightCol")
     model = km.fit(train_feats)
     preds = model.transform(train_feats)
     sil = evaluator.evaluate(preds)
@@ -268,9 +279,9 @@ for k in ks:
 #plt.grid(True)
 #plt.show()
 
-# Κάνε assign σε ΟΛΕΣ τις εγγραφές (και σε unknown) χρησιμοποιώντας τα features που ήδη έχεις
+
 clusters_all = (best_model
-    .transform(feats_all.select("scaled_features", "topic_merged_norm",'id', 'name', 'surname', 'researchField', 'company_rank', 'profile', 'company_name', 'industry', 'city'))
+    .transform(feats_all.select("scaled_features", "topic_merged_norm",'id', 'name', 'surname', 'researchField', 'company_rank', 'profile', 'company_name', 'industry', 'city',"weightCol"))
     .withColumnRenamed("prediction", "cluster")
 )
 
@@ -319,16 +330,44 @@ plt.show()
 
 #print(train_feats.columns)
 #df_topics
+top_results = feats_all.filter(feats_all["weightCol"] == 3)
 
-print("clean_combined columns:")
+print(top_results.columns)
+
+
+print("\nclean_combined columns:")
 print(clean_combined.columns)
-print("\ndf_topics columns:")
-print(df_topics.columns)
-print("\ntrain_df columns:")
-print(train_df.columns)
+
+first_5 = clean_combined.drop("scaled_features").limit(5)
+last_5 = clean_combined.drop("scaled_features").orderBy(F.monotonically_increasing_id(), ascending=False).limit(5)
+
+row_count = clean_combined.count()
+last_5 = clean_combined.drop("scaled_features").withColumn("row_idx", F.monotonically_increasing_id()).orderBy(F.desc("row_idx")).limit(5)
+
+
+print("First 5:")
+first_5.show(truncate=False)
+print("Last 5:")
+last_5.show(truncate=False)
+
+print("\nclusters_all 5 rows:")
+clusters_all.drop("scaled_features").show(5, truncate=False)
+
+
+last_clean_combined_5 = clusters_all.drop("scaled_features").orderBy(F.monotonically_increasing_id(), ascending=False).limit(10)
+
+row_count_clusters_all = clusters_all.count()
+last_clean_combined_5 = clusters_all.drop("scaled_features").withColumn("row_idx", F.monotonically_increasing_id()).orderBy(F.desc("row_idx")).limit(20)
+print("Last 20:")
+last_clean_combined_5.show(truncate=False)
+
 print("\nfeats_all columns:")
 print(feats_all.columns)
+
+print("\ntrain_df columns:")
+print(train_df.columns)
+
 print("\nclusters_all columns:")
 print(clusters_all.columns)
-clusters_all.drop("scaled_features").show(1, truncate=False)
-#clean_combined
+
+#clean_combined"""
