@@ -341,7 +341,7 @@ plt.show()
 top_results = clusters_all.filter(clusters_all["weightCol"] == 3)
 #top_results.show()
 
-#επιλέγει και βρίσκει το cluster που βρίσκεται το topic_merged_norm "construction"
+#επιλέγει και βρίσκει το cluster που βρίσκεται το topic_merged_norm "construction".Επέλεξε το cluster όπου το topic_merged_norm ισούται topic_merged_norm_parameter
 cluster_id=clusters_all.filter(clusters_all["topic_merged_norm"] == topic_merged_norm_parameter).select("cluster").first()["cluster"]
 #εμφάνιση όλων των αποτελεσμάτων που ανήκουν σε αυτό το cluster
 cluster_results = clusters_all.filter(clusters_all["cluster"] == cluster_id)
@@ -352,8 +352,9 @@ other_results = cluster_results.filter(cluster_results["weightCol"] != 3)
 final_results = top_results.union(other_results)
 
 final_results = final_results.drop("scaled_features")
-final_results.show(5, truncate=False)
+#final_results.show(5, truncate=False)
 #final_results.show(final_results.count(), truncate=False)
+final_results.toPandas().to_csv('final_results.csv', index=False)
 
 
 """
