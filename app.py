@@ -3,7 +3,7 @@ import pandas as pd
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
-from backend.test import cluster_topics_from_files
+from backend.test2 import run_kmeans
 app = Flask(__name__)
 CORS(app)
 # Read the first CSV file as a DataFrame
@@ -23,41 +23,17 @@ DEFAULT_STARTUPS = "C:\\Users\\arhod\\Desktop\\Diploma-vscode\\INC 5000 Companie
 
 dataINC5000 = dataINC5000.replace({np.nan: None})
 
-@app.get("/")
-def get_clusters():
-    clusters_all = cluster_topics_from_files(DEFAULT_STARTUPS, DEFAULT_RESEARCH)
-    clusters_all_pd = clusters_all.toPandas()
-    # Παράδειγμα: ομαδοποίηση και επιλογή top topics ανά cluster
-    result = (
-        clusters_all_pd
-            .groupby("cluster")["topic_merged_norm"]
-            .value_counts()
-            .groupby(level=0)
-            .head(15)
-            .reset_index(name='count')
-            .to_dict(orient="records")
-    )
-    return jsonify(result)
-
-
 
 @app.post("/api/upload_files")
 def upload_files():
-    # Τα αρχεία που στέλνει ο client (π.χ. με fetch/axios σε React)
-    research_file = request.files['research_file']
-    startup_file  = request.files['startup_file']
-    """
-    # Αποθηκεύεις προσωρινά ή τα περνάς ως file-like io
-    research_path = "/tmp/research.csv"
-    startup_path = "/tmp/startup.csv"
-    research_file.save(research_path)
-    startup_file.save(startup_path)
-    """
-    # Κλήση της Spark function με paths των uploaded files
-    clusters_all = cluster_topics_from_files(startup_file, research_file)
-    clusters_all_pd = clusters_all.toPandas()
-    result = clusters_all_pd[['cluster','topic_merged_norm']].head(10).to_dict(orient='records')
-    return jsonify(result)
+    upload_file = request.files['file']
+    selected_option = request.form['selected_option']
+    temp_path = "/tmp/user_uploaded.csv"
+    upload_file.save(temp_path)
+    results = run_kmeans(temp_path, selected_option)
+    results_pd = results.toPandas()
+    return jsonify(results_pd.to_dict(orient="records"))
+
 
 if __name__ == '__main__':
     app.run(debug=True)
