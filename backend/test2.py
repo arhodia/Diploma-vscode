@@ -1,5 +1,4 @@
-from turtle import pd
-from matplotlib import pyplot as plt
+from pyspark.sql.functions import col
 from pyspark.ml.functions import vector_to_array
 from pyspark.ml import Pipeline
 from pyspark.sql import SparkSession
@@ -12,9 +11,6 @@ from pyspark.sql import types as T
 import os
 from pyspark.sql import functions as F
 from pyspark.ml.feature import PCA as PCAml
-from pyspark.sql.window import Window
-from pyspark.sql import Row
-import pyspark.sql.functions as F
 
 os.environ["PYSPARK_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
@@ -64,10 +60,15 @@ s2 = (startups_df
     .withColumn("researchField", F.lit(None).cast("string"))
     .select(*cols))
 
+
 # Τελικό ενιαίο DataFrame με unionByName
 combined = r2.unionByName(s2, allowMissingColumns=True)
+#combined.show(combined.count(), truncate=False)
 
-'''
+#combined.count()
+combined.dropDuplicates()
+combined.distinct()
+
 # Εμφανίζουμε μερικές εγγραφές για επαλήθευση
 combined.filter(col("id") == 123).show(truncate=False)
 combined.filter(col("company_rank") == 1).show(truncate=False)
@@ -75,7 +76,15 @@ combined.filter(col("id") == 17.0).show(truncate=False)
 combined.filter(col("id") == 4999).show(truncate=False)
 combined.filter(col("company_rank") == 587).show(truncate=False)
 combined.filter(col("company_rank") == 789).show(truncate=False)
-'''
+
+
+#Ελέγχω τα χαρατηριστικα των 2 dataframes
+r2.printSchema()
+s2.printSchema()
+
+r2.count()
+s2.count()
+
 #combined.printSchema() 
 #combined.toPandas().to_csv(final_csv, index=False, encoding="utf-8-sig")
 # Εκτυπώνω πληροφορίες για το αρχείο
@@ -324,17 +333,30 @@ plt.colorbar(label="Cluster")
 plt.tight_layout()
 plt.show()
 """
-# Μεγέθη clusters (στο train set)
-#print("Cluster sizes:", best_model.summary.clusterSizes)
 
 
-#print(train_feats.columns)
-#df_topics
-top_results = feats_all.filter(feats_all["weightCol"] == 3)
-
-print(top_results.columns)
 
 
+#αποθήκευσε και εμφάνισε μόνο τα αποτελέσματα με weightCol=3 την μεγαλύτερη προτεραιότητα 
+top_results = clusters_all.filter(clusters_all["weightCol"] == 3)
+#top_results.show()
+
+#επιλέγει και βρίσκει το cluster που βρίσκεται το topic_merged_norm "construction"
+cluster_id=clusters_all.filter(clusters_all["topic_merged_norm"] == topic_merged_norm_parameter).select("cluster").first()["cluster"]
+#εμφάνιση όλων των αποτελεσμάτων που ανήκουν σε αυτό το cluster
+cluster_results = clusters_all.filter(clusters_all["cluster"] == cluster_id)
+#cluster_results.show()
+
+
+other_results = cluster_results.filter(cluster_results["weightCol"] != 3)
+final_results = top_results.union(other_results)
+
+final_results = final_results.drop("scaled_features")
+final_results.show(5, truncate=False)
+#final_results.show(final_results.count(), truncate=False)
+
+
+"""
 print("\nclean_combined columns:")
 print(clean_combined.columns)
 
@@ -370,4 +392,5 @@ print(train_df.columns)
 print("\nclusters_all columns:")
 print(clusters_all.columns)
 
-#clean_combined"""
+#clean_combined
+#"""
