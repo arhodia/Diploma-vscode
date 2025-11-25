@@ -28,9 +28,9 @@ dataINC5000 = dataINC5000.replace({np.nan: None})
 def upload_files():
     upload_file = request.files['file']
     selected_option = request.form['selected_option']
-    temp_path = "/tmp/user_uploaded.csv"
-    upload_file.save(temp_path)
-    results = run_kmeans(temp_path, selected_option)
+    #temp_path = "/tmp/user_uploaded.csv"
+    #upload_file.save(temp_path)
+    results = run_kmeans(upload_file, selected_option)
     results_pd = results.toPandas()
     return jsonify(results_pd.to_dict(orient="records"))
 

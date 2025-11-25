@@ -1,128 +1,81 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { 
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
-  Paper, 
-  Button, 
-  Select, 
-  MenuItem, 
-  InputLabel, 
-  FormControl,
-  Box,
-  Typography,
-  Alert,
-  CircularProgress
+  Select, MenuItem, InputLabel, FormControl, Button, Box, Typography, Alert, CircularProgress, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper
 } from "@mui/material";
 
 const STATIC_OPTIONS = [
-  "it management ",
-  "environmental services ",
-  "real estate",
-  "education",
-  "security",
-  "travel   hospitality",
-  "financial services",
-  "consumer products   services",
-  "energy",
-  "computer hardware",
-  "software",
-  "government services",
-  "it services ",
-  "manufacturing",
-  "media",
-  "advertising   marketing",
-  "retail",
-  "human resources",
-  "health",
-  "it system development"
+ "it management ", 
+ "environmental services ", 
+ "real estate",
+ "education",
+ "security",
+ "travel hospitality", 
+ "financial services",
+ "consumer products services",
+ "energy",
+ "computer hardware",
+ "software", 
+ "government services", 
+ "it services ",
+ "manufacturing", 
+ "media",
+ "advertising marketing",
+ "retail", 
+ "human resources", 
+ "health", 
+ "it system development"
 ];
 
 export default function FacultyList() {
-  const [data, setData] = useState([]);
   const [selectedOption, setSelectedOption] = useState('');
-  const [researchFile, setResearchFile] = useState(null);
-  const [startupFile, setStartupFile] = useState(null);
+  const [uploadFile, setUploadFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState({ type: '', text: '' });
+  const [data, setData] = useState([]);
 
-  // Fetch initial data (GET)
-  useEffect(() => {
-    fetch('http://127.0.0.1:5000/')
-      .then(response => response.json())
-      .then(data => setData(data))
-      .catch(error => console.error('Error fetching data:', error));
-  }, []);
-
-  // Handle Research File selection
-  const handleResearchFileChange = (e) => {
-    const file = e.target.files[0];
-    setResearchFile(file);
-    console.log('Research file selected:', file?.name);
-  };
-
-  // Handle Startup File selection
-  const handleStartupFileChange = (e) => {
-    const file = e.target.files[0];
-    setStartupFile(file);
-    console.log('Startup file selected:', file?.name);
-  };
-
-  // Handle dropdown option change
+  // Dropdown option change
   const handleOptionChange = (e) => {
     setSelectedOption(e.target.value);
   };
 
-  // Handle Upload (POST)
+  // File select
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    setUploadFile(file);
+  };
+
+  // Upload (POST)
   const handleUpload = async () => {
-    // Validation
-    if (!researchFile || !startupFile) {
-      setUploadMessage({
-        type: 'error',
-        text: 'Παρακαλώ επίλεξε και τα δύο αρχεία (Research και Startup)'
-      });
+    if (!selectedOption || !uploadFile) {
+      setUploadMessage({type: 'error', text: 'Επίλεξε αρχείο ΚΑΙ πεδίο εργασίας!'});
       return;
     }
 
     setLoading(true);
     setUploadMessage({ type: '', text: '' });
 
-    // Create FormData object
     const formData = new FormData();
-    formData.append('research_file', researchFile);
-    formData.append('startup_file', startupFile);
+    formData.append('file', uploadFile); // μόνο ένα αρχείο!
+    formData.append('selected_option', selectedOption);
 
     try {
       const response = await fetch('http://127.0.0.1:5000/api/upload_files', {
         method: 'POST',
-        body: formData,
+        body: formData
       });
 
       const result = await response.json();
 
       if (response.ok) {
-        setUploadMessage({
-          type: 'success',
-          text: result.message || 'Τα αρχεία ανέβηκαν επιτυχώς!'
-        });
-        
-      
-        setData(result);
-        // Reset file inputs
-        setResearchFile(null);
-        setStartupFile(null);
-        document.getElementById('research-file-upload').value = '';
-        document.getElementById('startup-file-upload').value = '';
+        setUploadMessage({ type: 'success', text: result.message || 'Αρχείο ανέβηκε επιτυχώς!' });
+        setData(result); // μόνο μετά το POST
+        setUploadFile(null);
+        document.getElementById('file-upload').value = '';
       } else {
-        setUploadMessage({
-          type: 'error',
-          text: result.error || 'Σφάλμα κατά το ανέβασμα των αρχείων'
-        });
+        setUploadMessage({ type: 'error', text: result.error || 'Σφάλμα κατά το ανέβασμα.' });
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      setUploadMessage({
-        type: 'error',
-        text: 'Σφάλμα σύνδεσης με τον server'
-      });
+      setUploadMessage({ type: 'error', text: 'Σφάλμα σύνδεσης με τον server' });
     } finally {
       setLoading(false);
     }
@@ -131,8 +84,7 @@ export default function FacultyList() {
   return (
     <div style={{ width: "80%", margin: "0 auto", paddingTop: "2em" }}>
       <h2 style={{ textAlign: "center" }}>Faculty Dataset</h2>
-      
-      {/* Dropdown Selection */}
+      {/* Dropdown */}
       <FormControl fullWidth margin="normal">
         <InputLabel id="dropdown-label">Select Option</InputLabel>
         <Select
@@ -148,81 +100,37 @@ export default function FacultyList() {
       </FormControl>
 
       {/* File Upload Section */}
-      <Box sx={{ 
-        marginTop: 3, 
-        marginBottom: 3, 
-        padding: 3, 
-        border: '1px solid #ddd', 
-        borderRadius: 2,
-        backgroundColor: '#f9f9f9'
-      }}>
-        <Typography variant="h6" gutterBottom>
-          Ανέβασμα Αρχείων
-        </Typography>
-
-        {/* Research File Upload */}
+      <Box sx={{ marginTop: 3, marginBottom: 3, padding: 3, border: '1px solid #ddd', borderRadius: 2, backgroundColor: '#f9f9f9' }}>
+        <Typography variant="h6" gutterBottom>Ανέβασμα Αρχείου</Typography>
         <Box sx={{ marginBottom: 2 }}>
           <input
             accept=".csv"
             type="file"
             style={{ display: "none" }}
-            id="research-file-upload"
-            onChange={handleResearchFileChange}
+            id="file-upload"
+            onChange={handleFileChange}
           />
-          <label htmlFor="research-file-upload">
-            <Button 
-              variant="outlined" 
-              component="span" 
-              color="primary"
-              sx={{ marginRight: 2 }}
-            >
-              Upload Research File
+          <label htmlFor="file-upload">
+            <Button variant="outlined" component="span" color="primary" sx={{ marginRight: 2 }}>
+              Upload File
             </Button>
           </label>
-          {researchFile && (
+          {uploadFile && (
             <Typography variant="body2" component="span" color="success.main">
-              ✓ {researchFile.name}
+              ✓ {uploadFile.name}
             </Typography>
           )}
         </Box>
-
-        {/* Startup File Upload */}
-        <Box sx={{ marginBottom: 2 }}>
-          <input
-            accept=".csv"
-            type="file"
-            style={{ display: "none" }}
-            id="startup-file-upload"
-            onChange={handleStartupFileChange}
-          />
-          <label htmlFor="startup-file-upload">
-            <Button 
-              variant="outlined" 
-              component="span" 
-              color="primary"
-              sx={{ marginRight: 2 }}
-            >
-              Upload Startup File
-            </Button>
-          </label>
-          {startupFile && (
-            <Typography variant="body2" component="span" color="success.main">
-              ✓ {startupFile.name}
-            </Typography>
-          )}
-        </Box>
-
         {/* Submit Button */}
         <Button 
           variant="contained" 
           color="success" 
           onClick={handleUpload}
-          disabled={loading || !researchFile || !startupFile}
+          disabled={loading || !uploadFile || !selectedOption}
           sx={{ marginTop: 2 }}
         >
-          {loading ? <CircularProgress size={24} /> : 'Αποστολή Αρχείων'}
+          {loading ? <CircularProgress size={24} /> : 'Αποστολή Αρχείου'}
         </Button>
-
         {/* Upload Message */}
         {uploadMessage.text && (
           <Alert 
@@ -236,34 +144,30 @@ export default function FacultyList() {
       </Box>
 
       {/* Data Table */}
+      {data.length > 0 && (
       <TableContainer component={Paper} style={{ marginTop: "2em" }}>
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell><strong>Cluster</strong></TableCell>
-              <TableCell><strong>Count</strong></TableCell>
-              <TableCell><strong>Topic</strong></TableCell>
-            </TableRow>
+          <TableRow>
+            <TableCell><strong>Όνομα - Επώνυμο / Εταιρεία</strong></TableCell>
+            <TableCell><strong>Προφίλ</strong></TableCell>
+            <TableCell><strong>Ερευνητικό Πεδίο</strong></TableCell>
+             <TableCell><strong>Πεδίο</strong></TableCell>
+          </TableRow>
           </TableHead>
           <TableBody>
-            {data.length > 0 ? (
-              data.map((row, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>{row.cluster}</TableCell>
-                  <TableCell>{row.count}</TableCell>
-                  <TableCell>{row.topic_merged_norm}</TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={3} align="center">
-                  Δεν υπάρχουν δεδομένα
-                </TableCell>
+            {data.map((row, idx) => (
+              <TableRow key={idx}>
+                <TableCell>{row.name} - {row.surname} / {row.company_name}</TableCell>
+                <TableCell>{row.profile}</TableCell>
+                <TableCell>{row.researchField}</TableCell>
+                <TableCell>{row.cluster}</TableCell>
               </TableRow>
-            )}
-          </TableBody>
+            ))}
+</TableBody>
+
         </Table>
-      </TableContainer>
+      </TableContainer>)}
     </div>
   );
 }
