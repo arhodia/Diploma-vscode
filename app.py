@@ -5,7 +5,7 @@ from flask_cors import CORS
 import os
 from backend.test2 import run_kmeans
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 # Read the first CSV file as a DataFrame
 dataINC5000 = pd.read_csv('C:\\Users\\arhod\\Desktop\\Diploma-vscode\\INC 5000 Companies 2019.csv')
 
@@ -31,7 +31,10 @@ def upload_files():
     #temp_path = "/tmp/user_uploaded.csv"
     #upload_file.save(temp_path)
     results = run_kmeans(upload_file, selected_option)
+    print(type(results))
+    print(results)
     results_pd = results.toPandas()
+
     return jsonify(results_pd.to_dict(orient="records"))
 
 

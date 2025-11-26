@@ -1,3 +1,4 @@
+from flask import jsonify
 from pyspark.sql.functions import col
 from pyspark.ml.functions import vector_to_array
 from pyspark.ml import Pipeline
@@ -296,7 +297,6 @@ def run_kmeans(file, selected_option):
         .withColumnRenamed("prediction", "cluster")
     )
 
-
     # Ποιο cluster “κερδίζει” για κάθε topic_merged_norm (με βάση την πλειοψηφία των εγγραφών)
     """
     topic2cluster = (
@@ -343,6 +343,18 @@ def run_kmeans(file, selected_option):
     top_results = clusters_all.filter(clusters_all["weightCol"] == 3)
     #top_results.show()
 
+    #print(clusters_all.select("topic_merged_norm").rdd.flatMap(lambda x: x).collect())
+    #print(selected_option)
+    # Λήψη όλων των μοναδικών τιμών ως λίστα
+    unique_values = clusters_all.select("topic_merged_norm").rdd.flatMap(lambda x: x).distinct().collect()
+
+    # Πόσες είναι;
+    number_of_unique_values = len(unique_values)
+
+    #print("Πλήθος:", number_of_unique_values)
+    #print("Τιμές:", unique_values)
+
+    
     #επιλέγει και βρίσκει το cluster που βρίσκεται το topic_merged_norm "construction".Επέλεξε το cluster όπου το topic_merged_norm ισούται selected_option
     cluster_id=clusters_all.filter(clusters_all["topic_merged_norm"] == selected_option).select("cluster").first()["cluster"]
     #εμφάνιση όλων των αποτελεσμάτων που ανήκουν σε αυτό το cluster
@@ -355,6 +367,8 @@ def run_kmeans(file, selected_option):
 
     final_results = final_results.drop("scaled_features")
 
+    # Εμφάνισε τις πρώτες 10 εγγραφές των αποτελεσμάτων
+    final_results.show(10, truncate=False)
     #final_results.show(5, truncate=False)
     #final_results.show(final_results.count(), truncate=False)
     final_results.toPandas().to_csv('final_results.csv', index=False)
