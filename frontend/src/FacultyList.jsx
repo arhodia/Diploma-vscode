@@ -4,26 +4,33 @@ import {
 } from "@mui/material";
 
 const STATIC_OPTIONS = [
- "it management ", 
- "environmental services ", 
- "real estate",
- "education",
- "security",
- "travel hospitality", 
- "financial services",
- "consumer products services",
- "energy",
- "computer hardware",
- "software", 
- "government services", 
- "it services ",
- "manufacturing", 
- "media",
- "advertising marketing",
- "retail", 
- "human resources", 
- "health", 
- "it system development"
+ 'business products   services',
+ 'consumer products   services',
+ 'it management',
+ 'real estate',
+ 'financial services',
+ 'engineering',
+ 'security',
+ 'logistics   transportation', 
+ 'insurance',
+ 'telecommunications',
+ 'manufacturing', 
+ 'travel   hospitality', 
+ 'software', 
+ 'construction',
+ 'environmental services', 
+ 'health', 
+ 'education', 
+ 'advertising   marketing', 
+ 'human resources', 
+ 'food   beverage', 
+ 'government services',
+ 'media', 
+ 'energy',
+ 'retail',
+ 'it system development', 
+ 'it services', 
+ 'computer hardware'
 ];
 
 export default function FacultyList() {
@@ -160,12 +167,11 @@ export default function FacultyList() {
               <TableRow key={idx}>
                 <TableCell>{row.name} - {row.surname} / {row.company_name}</TableCell>
                 <TableCell>{row.profile}</TableCell>
-                <TableCell>{row.researchField}</TableCell>
+                <TableCell>{row.topic_merged_norm}</TableCell>
                 <TableCell>{row.cluster}</TableCell>
               </TableRow>
             ))}
-</TableBody>
-
+          </TableBody>
         </Table>
       </TableContainer>)}
     </div>
