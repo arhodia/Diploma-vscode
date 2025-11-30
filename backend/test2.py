@@ -18,7 +18,7 @@ os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Program
 final_csv = "C:/Users/arhod/Desktop/Diploma-vscode/combined_utf8bom.csv"
 
 
-def run_kmeans(file, selected_option):
+def run_kmeans(upload_file, selected_option,file_type):
     spark = (SparkSession.builder
                 .appName("Researchers+Companies: Unified KMeans")
                 .master("local[*]").getOrCreate())

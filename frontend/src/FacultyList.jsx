@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { RadioGroup, FormControlLabel, Radio } from '@mui/material';
 import { 
   Select, MenuItem, InputLabel, FormControl, Button, Box, Typography, Alert, CircularProgress, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper
 } from "@mui/material";
@@ -36,6 +37,7 @@ const STATIC_OPTIONS = [
 export default function FacultyList() {
   const [selectedOption, setSelectedOption] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
+  const [fileType, setFileType] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState({ type: '', text: '' });
   const [data, setData] = useState([]);
@@ -51,6 +53,12 @@ export default function FacultyList() {
     setUploadFile(file);
   };
 
+
+  // Radio button choice for file type
+  const handleFileTypeChange = (e) => {   
+    setFileType(e.target.value);
+  };
+
   // Upload (POST)
   const handleUpload = async () => {
     if (!selectedOption || !uploadFile) {
@@ -64,6 +72,7 @@ export default function FacultyList() {
     const formData = new FormData();
     formData.append('file', uploadFile); // μόνο ένα αρχείο!
     formData.append('selected_option', selectedOption);
+    formData.append('file_type', fileType);
 
     try {
       const response = await fetch('http://127.0.0.1:5000/api/upload_files', {
@@ -138,6 +147,17 @@ export default function FacultyList() {
         >
           {loading ? <CircularProgress size={24} /> : 'Αποστολή Αρχείου'}
         </Button>
+        <FormControl component="fieldset">
+        <RadioGroup
+          row
+          value={fileType || ''}  // για controlled RadioGroup
+          onChange={handleFileTypeChange}
+          name="file_type"
+        >
+          <FormControlLabel value="start-up" control={<Radio />} label="Start-up" />
+          <FormControlLabel value="researcher" control={<Radio />} label="Researcher" />
+        </RadioGroup>
+        </FormControl>
         {/* Upload Message */}
         {uploadMessage.text && (
           <Alert 
@@ -159,7 +179,7 @@ export default function FacultyList() {
             <TableCell><strong>Όνομα - Επώνυμο / Εταιρεία</strong></TableCell>
             <TableCell><strong>Προφίλ</strong></TableCell>
             <TableCell><strong>Ερευνητικό Πεδίο</strong></TableCell>
-             <TableCell><strong>Πεδίο</strong></TableCell>
+            <TableCell><strong>Πεδίο</strong></TableCell>
           </TableRow>
           </TableHead>
           <TableBody>

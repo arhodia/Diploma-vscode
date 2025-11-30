@@ -17,20 +17,17 @@ print(f"First CSV data size: {size_indian_faculty_mb:.2f} MB")
 print(f"Second CSV data size: {size_inc5000_mb:.2f} MB")
 '''
 
-DEFAULT_RESEARCH = "C:\\Users\\arhod\\Desktop\\Diploma-vscode\\synthetic_researchers_5000_base.csv"
-DEFAULT_STARTUPS = "C:\\Users\\arhod\\Desktop\\Diploma-vscode\\INC 5000 Companies 2019.csv"
-
-
 dataINC5000 = dataINC5000.replace({np.nan: None})
 
 
 @app.post("/api/upload_files")
 def upload_files():
     upload_file = request.files['file']
+    file_type = request.form['file_type']
     selected_option = request.form['selected_option']
     #temp_path = "/tmp/user_uploaded.csv"
     #upload_file.save(temp_path)
-    results = run_kmeans(upload_file, selected_option)
+    results = run_kmeans(upload_file, selected_option,file_type)
     print(type(results))
     print(results)
     results_pd = results.toPandas()
