@@ -12,18 +12,20 @@ from pyspark.sql import types as T
 import os
 from pyspark.sql import functions as F
 from pyspark.ml.feature import PCA as PCAml
-
+import time
 os.environ["PYSPARK_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 final_csv = "C:/Users/arhod/Desktop/Diploma-vscode/combined_utf8bom.csv"
 
 
 def run_kmeans(upload_file, selected_option,file_type):
+    start_time = time.time()   #Αρχή μέτρησης
     spark = (SparkSession.builder
                 .appName("Researchers+Companies: Unified KMeans")
                 .master("local[*]").getOrCreate())
     spark.sparkContext.setLogLevel("WARN")
-
+    print(spark.sparkContext.master)
+    print(spark.sparkContext.defaultParallelism) 
     startups_df = spark.read.format("csv") \
             .option("header", "true") \
             .option("inferSchema", "true") \
@@ -40,8 +42,7 @@ def run_kmeans(upload_file, selected_option,file_type):
     startups_df    = startups_df.withColumn("rank", F.col("rank").cast("int"))
 
     # Ορίζουμε το ΚΟΙΝΟ σετ στηλών που θέλουμε στο ενιαίο dataset και απο τα 2 csv
-    cols = ["id", "name", "surname", "researchField",
-            "company_rank", "profile", "company_name", "industry", "city"]
+    cols = ["id", "name", "surname", "researchField", "company_rank", "profile", "company_name", "industry", "city"]
 
     # Ετοιμάζουμε το DF των researchers: προσθέτουμε τις «εταιρικές» στήλες ως NULL
     r2 = (researchers_df
@@ -71,7 +72,7 @@ def run_kmeans(upload_file, selected_option,file_type):
     #combined.count()
     combined.dropDuplicates()
     combined.distinct()
-
+    """
     # Εμφανίζουμε μερικές εγγραφές για επαλήθευση
     combined.filter(col("id") == 123).show(truncate=False)
     combined.filter(col("company_rank") == 1).show(truncate=False)
@@ -79,14 +80,14 @@ def run_kmeans(upload_file, selected_option,file_type):
     combined.filter(col("id") == 4999).show(truncate=False)
     combined.filter(col("company_rank") == 587).show(truncate=False)
     combined.filter(col("company_rank") == 789).show(truncate=False)
-
+    """
 
     #Ελέγχω τα χαρατηριστικα των 2 dataframes
-    r2.printSchema()
-    s2.printSchema()
+    #r2.printSchema()
+    #s2.printSchema()
 
-    r2.count()
-    s2.count()
+    #r2.count()
+    #s2.count()
 
     #combined.printSchema() 
     #combined.toPandas().to_csv(final_csv, index=False, encoding="utf-8-sig")
@@ -292,10 +293,33 @@ def run_kmeans(upload_file, selected_option,file_type):
     #plt.show()
 
 
-    clusters_all = (best_model
-        .transform(feats_all.select("scaled_features", "topic_merged_norm",'id', 'name', 'surname', 'researchField', 'company_rank', 'profile', 'company_name', 'industry', 'city',"weightCol"))
+    clusters_all = (
+    best_model
+        .transform(feats_all.select(
+            "scaled_features", "topic_merged_norm", "id", "name", "surname",
+            "researchField", "company_rank", "profile", "company_name",
+            "industry", "city", "weightCol"
+        ))
         .withColumnRenamed("prediction", "cluster")
-    )
+        .withColumn(
+            "identity",
+            F.when(
+                (F.col("company_rank") == -1) &
+                (F.col("profile") == "unknown") &
+                (F.col("company_name") == "unknown") &
+                (F.col("industry") == "unknown"),
+                F.lit("researcher")
+            )
+            .when(
+                (F.col("id") == -1) &
+                (F.col("name") == "unknown") &
+                (F.col("surname") == "unknown") &
+                (F.col("researchField") == "unknown"),
+                F.lit("start-up")
+            )
+            .otherwise(F.lit("Unknown"))
+        )
+)
 
     # Ποιο cluster “κερδίζει” για κάθε topic_merged_norm (με βάση την πλειοψηφία των εγγραφών)
     """
@@ -335,10 +359,6 @@ def run_kmeans(upload_file, selected_option,file_type):
     plt.tight_layout()
     plt.show()
     """
-
-
-
-
     #αποθήκευσε και εμφάνισε μόνο τα αποτελέσματα με weightCol=3 την μεγαλύτερη προτεραιότητα 
     top_results = clusters_all.filter(clusters_all["weightCol"] == 3)
     #top_results.show()
@@ -366,13 +386,29 @@ def run_kmeans(upload_file, selected_option,file_type):
     final_results = top_results.union(other_results)
 
     final_results = final_results.drop("scaled_features")
+    # --- Φιλτράρισμα βάσει file_type ---
+    if file_type == "start-up":
+        final_results = final_results.filter(F.col("identity") == "researcher")
 
+    elif file_type == "researcher":
+        final_results = final_results.filter(F.col("identity") == "start-up")
+
+    # 1️⃣ Οι πιο σημαντικές εγγραφές (weightCol = 3)
+    final_results_main = final_results.filter(F.col("weightCol") == 3)
+
+    # 2️⃣ Οι υπόλοιπες εγγραφές → Μπαίνουν στις "προτάσεις"
+    final_results_recommendations = final_results.filter(F.col("weightCol") != 3)
     # Εμφάνισε τις πρώτες 10 εγγραφές των αποτελεσμάτων
-    final_results.show(10, truncate=False)
+    #final_results.show(10, truncate=False)
     #final_results.show(5, truncate=False)
     #final_results.show(final_results.count(), truncate=False)
     final_results.toPandas().to_csv('final_results.csv', index=False)
-    return final_results
+    final_results_recommendations.toPandas().to_csv('final_results_recommendations.csv', index=False)
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print("Execution time:", execution_time, "seconds")
+    print(os.cpu_count())
+    return final_results_main, final_results_recommendations
 
 """
 print("\nclean_combined columns:")

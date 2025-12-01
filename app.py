@@ -27,12 +27,17 @@ def upload_files():
     selected_option = request.form['selected_option']
     #temp_path = "/tmp/user_uploaded.csv"
     #upload_file.save(temp_path)
-    results = run_kmeans(upload_file, selected_option,file_type)
-    print(type(results))
-    print(results)
-    results_pd = results.toPandas()
-
-    return jsonify(results_pd.to_dict(orient="records"))
+    final_results, final_results_recommendations  = run_kmeans(upload_file, selected_option,file_type)
+     # Μετατροπή σε pandas
+    final_results_pd = final_results.toPandas()
+    final_results_reco_pd = final_results_recommendations.toPandas()
+    #print("FINAL RESULTS (len):", len(final_results_pd))
+    #print("RECOMMENDATIONS (len):", len(final_results_reco_pd))
+    # Επιστρέφουμε JSON με 2 keys
+    return jsonify({
+        "results": final_results_pd.to_dict(orient="records"),
+        "recommendations": final_results_reco_pd.to_dict(orient="records")
+    })
 
 
 if __name__ == '__main__':

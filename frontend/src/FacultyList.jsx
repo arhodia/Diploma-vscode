@@ -41,6 +41,8 @@ export default function FacultyList() {
   const [loading, setLoading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState({ type: '', text: '' });
   const [data, setData] = useState([]);
+  const [results, setResults] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
 
   // Dropdown option change
   const handleOptionChange = (e) => {
@@ -84,7 +86,8 @@ export default function FacultyList() {
 
       if (response.ok) {
         setUploadMessage({ type: 'success', text: result.message || 'Αρχείο ανέβηκε επιτυχώς!' });
-        setData(result); // μόνο μετά το POST
+        setResults(result.results || []);
+        setRecommendations(result.recommendations || []);// μόνο μετά το POST
         setUploadFile(null);
         document.getElementById('file-upload').value = '';
       } else {
@@ -171,29 +174,67 @@ export default function FacultyList() {
       </Box>
 
       {/* Data Table */}
-      {data.length > 0 && (
-      <TableContainer component={Paper} style={{ marginTop: "2em" }}>
-        <Table>
-          <TableHead>
-          <TableRow>
-            <TableCell><strong>Όνομα - Επώνυμο / Εταιρεία</strong></TableCell>
-            <TableCell><strong>Προφίλ</strong></TableCell>
-            <TableCell><strong>Ερευνητικό Πεδίο</strong></TableCell>
-            <TableCell><strong>Πεδίο</strong></TableCell>
+      {results.length > 0 && (
+  <TableContainer component={Paper} style={{ marginTop: "2em" }}>
+    <Typography variant="h6" sx={{ padding: 2, fontWeight: "bold" }}>
+      Κορυφαία Αποτελέσματα
+    </Typography>
+
+    <Table>
+      <TableHead>
+        <TableRow>
+          <TableCell><strong>Όνομα - Επώνυμο / Εταιρεία</strong></TableCell>
+          <TableCell><strong>Προφίλ</strong></TableCell>
+          <TableCell><strong>Ερευνητικό Πεδίο</strong></TableCell>
+          <TableCell><strong>Πεδίο</strong></TableCell>
+        </TableRow>
+      </TableHead>
+
+      <TableBody>
+        {results.map((row, idx) => (
+          <TableRow key={idx}>
+            <TableCell>{row.name} - {row.surname} / {row.company_name}</TableCell>
+            <TableCell>{row.profile}</TableCell>
+            <TableCell>{row.topic_merged_norm}</TableCell>
+            <TableCell>{row.cluster}</TableCell>
           </TableRow>
-          </TableHead>
-          <TableBody>
-            {data.map((row, idx) => (
-              <TableRow key={idx}>
-                <TableCell>{row.name} - {row.surname} / {row.company_name}</TableCell>
-                <TableCell>{row.profile}</TableCell>
-                <TableCell>{row.topic_merged_norm}</TableCell>
-                <TableCell>{row.cluster}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>)}
+        ))}
+      </TableBody>
+    </Table>
+  </TableContainer>
+)}
+
+
+{/* Προτεινόμενα Αποτελέσματα */}
+{recommendations.length > 0 && (
+  <TableContainer component={Paper} style={{ marginTop: "2em" }}>
+    <Typography variant="h6" sx={{ padding: 2, fontWeight: "bold" }}>
+      Προτεινόμενα Αποτελέσματα
+    </Typography>
+
+    <Table>
+      <TableHead>
+        <TableRow>
+          <TableCell><strong>Όνομα - Επώνυμο / Εταιρεία</strong></TableCell>
+          <TableCell><strong>Προφίλ</strong></TableCell>
+          <TableCell><strong>Ερευνητικό Πεδίο</strong></TableCell>
+          <TableCell><strong>Πεδίο</strong></TableCell>
+        </TableRow>
+      </TableHead>
+
+      <TableBody>
+        {recommendations.map((row, idx) => (
+          <TableRow key={idx}>
+            <TableCell>{row.name} - {row.surname} / {row.company_name}</TableCell>
+            <TableCell>{row.profile}</TableCell>
+            <TableCell>{row.topic_merged_norm}</TableCell>
+            <TableCell>{row.cluster}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </TableContainer>
+)}
     </div>
   );
 }
