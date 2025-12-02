@@ -11,7 +11,7 @@ Project Structure :
 - test2.py
 - test.py
 
-/frontend
+/frontend:
 -src/
 -public/
 -nodemodules/
