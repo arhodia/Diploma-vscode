@@ -23,7 +23,12 @@ app.py
 
 Data Files:
 combined_utf8bom.csv
+
 INC 5000 Companies 2019.csv
+
 indian_faculty_dataset.csv
+
 synthetic_researchers_5000_base.csv
+
 README.md
+
