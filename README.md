@@ -6,18 +6,24 @@ The project includes a backend (PySpark, Machine Learning) and a frontend (React
 
 ---
 
-Project Structure
+Project Structure :
 /backend
-├── app.py
-├── test2.py
+- test2.py
+- test.py
 
 /frontend
-├── src/
-├── public/
-└── package.json
+-src/
+-public/
+-nodemodules/
+-package.json
+-package-lock.json
+
+/
+app.py
 
 Data Files:
-
+combined_utf8bom.csv
 INC 5000 Companies 2019.csv
-
+indian_faculty_dataset.csv
 synthetic_researchers_5000_base.csv
+README.md
