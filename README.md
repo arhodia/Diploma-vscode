@@ -12,11 +12,17 @@ Project Structure :
 - test.py
 
 /frontend:
+
 -src/
+
 -public/
+
 -nodemodules/
+
 -package.json
+
 -package-lock.json
+
 
 /
 app.py
