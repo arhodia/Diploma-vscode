@@ -6,13 +6,10 @@ The project includes a backend (PySpark, Machine Learning) and a frontend (React
 
 ---
 
-## 📁 Project Structure
+Project Structure
 /backend
 ├── app.py
-├── SparkEntryPoint.py
-├── kmeans.py
-├── replace_missing_spark.py
-└── ...other backend scripts
+├── test2.py
 
 /frontend
 ├── src/
@@ -24,6 +21,3 @@ Data Files:
 INC 5000 Companies 2019.csv
 
 synthetic_researchers_5000_base.csv
-
-
-This starts the backend API (Spark initialization, clustering, matching logic).
