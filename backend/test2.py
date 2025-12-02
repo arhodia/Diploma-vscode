@@ -22,7 +22,7 @@ def run_kmeans(upload_file, selected_option,file_type):
     start_time = time.time()   #Αρχή μέτρησης
     spark = (SparkSession.builder
                 .appName("Researchers+Companies: Unified KMeans")
-                .master("local[*]").getOrCreate())
+                .master("local[2]").getOrCreate())
     spark.sparkContext.setLogLevel("WARN")
     print(spark.sparkContext.master)
     print(spark.sparkContext.defaultParallelism) 
