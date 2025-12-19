@@ -36,23 +36,15 @@ const STATIC_OPTIONS = [
 
 export default function FacultyList() {
   const [selectedOption, setSelectedOption] = useState('');
-  const [uploadFile, setUploadFile] = useState(null);
   const [fileType, setFileType] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState({ type: '', text: '' });
-  const [data, setData] = useState([]);
   const [results, setResults] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
 
   // Dropdown option change
   const handleOptionChange = (e) => {
     setSelectedOption(e.target.value);
-  };
-
-  // File select
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    setUploadFile(file);
   };
 
 
@@ -63,7 +55,7 @@ export default function FacultyList() {
 
   // Upload (POST)
   const handleUpload = async () => {
-    if (!selectedOption || !uploadFile) {
+    if (!selectedOption ) {
       setUploadMessage({type: 'error', text: 'Επίλεξε αρχείο ΚΑΙ πεδίο εργασίας!'});
       return;
     }
@@ -72,7 +64,6 @@ export default function FacultyList() {
     setUploadMessage({ type: '', text: '' });
 
     const formData = new FormData();
-    formData.append('file', uploadFile); // μόνο ένα αρχείο!
     formData.append('selected_option', selectedOption);
     formData.append('file_type', fileType);
 
@@ -88,8 +79,6 @@ export default function FacultyList() {
         setUploadMessage({ type: 'success', text: result.message || 'Αρχείο ανέβηκε επιτυχώς!' });
         setResults(result.results || []);
         setRecommendations(result.recommendations || []);// μόνο μετά το POST
-        setUploadFile(null);
-        document.getElementById('file-upload').value = '';
       } else {
         setUploadMessage({ type: 'error', text: result.error || 'Σφάλμα κατά το ανέβασμα.' });
       }
@@ -120,32 +109,12 @@ export default function FacultyList() {
 
       {/* File Upload Section */}
       <Box sx={{ marginTop: 3, marginBottom: 3, padding: 3, border: '1px solid #ddd', borderRadius: 2, backgroundColor: '#f9f9f9' }}>
-        <Typography variant="h6" gutterBottom>Ανέβασμα Αρχείου</Typography>
-        <Box sx={{ marginBottom: 2 }}>
-          <input
-            accept=".csv"
-            type="file"
-            style={{ display: "none" }}
-            id="file-upload"
-            onChange={handleFileChange}
-          />
-          <label htmlFor="file-upload">
-            <Button variant="outlined" component="span" color="primary" sx={{ marginRight: 2 }}>
-              Upload File
-            </Button>
-          </label>
-          {uploadFile && (
-            <Typography variant="body2" component="span" color="success.main">
-              ✓ {uploadFile.name}
-            </Typography>
-          )}
-        </Box>
-        {/* Submit Button */}
+      {/* Submit Button */}
         <Button 
           variant="contained" 
           color="success" 
           onClick={handleUpload}
-          disabled={loading || !uploadFile || !selectedOption}
+          disabled={loading || !selectedOption}
           sx={{ marginTop: 2 }}
         >
           {loading ? <CircularProgress size={24} /> : 'Αποστολή Αρχείου'}

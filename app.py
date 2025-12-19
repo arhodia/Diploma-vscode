@@ -3,7 +3,7 @@ import pandas as pd
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
-from backend.test2 import run_kmeans
+from backend.kmeans import run_kmeans
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 # Read the first CSV file as a DataFrame
@@ -22,12 +22,12 @@ dataINC5000 = dataINC5000.replace({np.nan: None})
 
 @app.post("/api/upload_files")
 def upload_files():
-    upload_file = request.files['file']
+    
     file_type = request.form['file_type']
     selected_option = request.form['selected_option']
     #temp_path = "/tmp/user_uploaded.csv"
     #upload_file.save(temp_path)
-    final_results, final_results_recommendations  = run_kmeans(upload_file, selected_option,file_type)
+    final_results, final_results_recommendations  = run_kmeans(selected_option,file_type)
      # Μετατροπή σε pandas
     final_results_pd = final_results.toPandas()
     final_results_reco_pd = final_results_recommendations.toPandas()
