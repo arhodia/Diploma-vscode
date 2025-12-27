@@ -21,7 +21,7 @@ os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Program
 final_csv = "C:/Users/arhod/Desktop/Diploma-vscode/combined_utf8bom.csv"
 
 
-def run_kmeans( selected_option,file_type):
+def run_kmeans( selected_option,file_type,algorithm):
     start_time = time.time()   #Αρχή μέτρησης
     spark = (SparkSession.builder
                 .appName("Researchers+Companies: Unified KMeans")
@@ -37,7 +37,7 @@ def run_kmeans( selected_option,file_type):
     researchers_df = spark.read.format("csv") \
             .option("header", "true") \
             .option("inferSchema", "true") \
-            .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_researchers_5000_base.csv")
+            .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_researchers_50000_inc5000dist.csv")
 
 
     # Cast σε συμβατούς τύπους για κοινό schema 

@@ -41,6 +41,11 @@ export default function FacultyList() {
   const [uploadMessage, setUploadMessage] = useState({ type: '', text: '' });
   const [results, setResults] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
+  const [algorithm, setAlgorithm] = useState("");
+
+  const handleAlgorithmChange = (e) => {
+  setAlgorithm(e.target.value);
+  };
 
   // Dropdown option change
   const handleOptionChange = (e) => {
@@ -55,8 +60,8 @@ export default function FacultyList() {
 
   // Upload (POST)
   const handleUpload = async () => {
-    if (!selectedOption ) {
-      setUploadMessage({type: 'error', text: 'Επίλεξε αρχείο ΚΑΙ πεδίο εργασίας!'});
+    if (!selectedOption || !fileType || !algorithm) {
+      setUploadMessage({type: 'error', text: 'Select a file AND a workspace!'});
       return;
     }
 
@@ -66,6 +71,7 @@ export default function FacultyList() {
     const formData = new FormData();
     formData.append('selected_option', selectedOption);
     formData.append('file_type', fileType);
+    formData.append("algorithm", algorithm); 
 
     try {
       const response = await fetch('http://127.0.0.1:5000/api/upload_files', {
@@ -76,14 +82,14 @@ export default function FacultyList() {
       const result = await response.json();
 
       if (response.ok) {
-        setUploadMessage({ type: 'success', text: result.message || 'Αρχείο ανέβηκε επιτυχώς!' });
+        setUploadMessage({ type: 'success', text: result.message || 'File uploaded successfully!' });
         setResults(result.results || []);
         setRecommendations(result.recommendations || []);// μόνο μετά το POST
       } else {
-        setUploadMessage({ type: 'error', text: result.error || 'Σφάλμα κατά το ανέβασμα.' });
+        setUploadMessage({ type: 'error', text: result.error || 'Error during upload.' });
       }
     } catch (error) {
-      setUploadMessage({ type: 'error', text: 'Σφάλμα σύνδεσης με τον server' });
+      setUploadMessage({ type: 'error', text: 'Connection error with the server' });
     } finally {
       setLoading(false);
     }
@@ -107,55 +113,97 @@ export default function FacultyList() {
         </Select>
       </FormControl>
 
-      {/* File Upload Section */}
-      <Box sx={{ marginTop: 3, marginBottom: 3, padding: 3, border: '1px solid #ddd', borderRadius: 2, backgroundColor: '#f9f9f9' }}>
-      {/* Submit Button */}
-        <Button 
-          variant="contained" 
-          color="success" 
-          onClick={handleUpload}
-          disabled={loading || !selectedOption}
-          sx={{ marginTop: 2 }}
-        >
-          {loading ? <CircularProgress size={24} /> : 'Αποστολή Αρχείου'}
-        </Button>
-        <FormControl component="fieldset">
-        <RadioGroup
-          row
-          value={fileType || ''}  // για controlled RadioGroup
-          onChange={handleFileTypeChange}
-          name="file_type"
-        >
-          <FormControlLabel value="start-up" control={<Radio />} label="Start-up" />
-          <FormControlLabel value="researcher" control={<Radio />} label="Researcher" />
-        </RadioGroup>
-        </FormControl>
-        {/* Upload Message */}
-        {uploadMessage.text && (
-          <Alert 
-            severity={uploadMessage.type} 
-            sx={{ marginTop: 2 }}
-            onClose={() => setUploadMessage({ type: '', text: '' })}
-          >
-            {uploadMessage.text}
-          </Alert>
-        )}
-      </Box>
+      {/* choose algorithm Section */}
+      <Box
+  sx={{
+    marginTop: 3,
+    marginBottom: 3,
+    padding: 3,
+    border: "1px solid #ddd",
+    borderRadius: 2,
+    backgroundColor: "#f9f9f9",
+  }}
+>
+  {/* 3 sections σε μία γραμμή */}
+  <Box
+    sx={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 2,
+      flexWrap: "wrap", // για μικρές οθόνες να “σπάει” ωραία
+    }}
+  >
+    {/* Αριστερά: Radio */}
+    <FormControl component="fieldset">
+      <RadioGroup
+        row
+        value={fileType || ""}
+        onChange={handleFileTypeChange}
+        name="file_type"
+        sx={{ gap: 2 }}
+      >
+        <FormControlLabel value="start-up" control={<Radio />} label="Start-up" />
+        <FormControlLabel value="researcher" control={<Radio />} label="Researcher" />
+      </RadioGroup>
+    </FormControl>
+
+    {/* Μέση: Select αλγορίθμου */}
+    <FormControl size="small" sx={{ minWidth: 220 }}>
+      <InputLabel id="algorithm-label">Algorithm</InputLabel>
+      <Select
+        labelId="algorithm-label"
+        value={algorithm}
+        label="Algorithm"
+        onChange={handleAlgorithmChange}
+      >
+        <MenuItem value="LSH">LSH</MenuItem>
+        <MenuItem value="KMEANS">K-MEANS</MenuItem>
+        <MenuItem value="BISECTING_KMEANS">K-MEANS BISECTING</MenuItem>
+        <MenuItem value="DBSCAN">DBSCAN</MenuItem>
+      </Select>
+    </FormControl>
+
+    {/* Δεξιά: Button */}
+    <Button
+      variant="contained"
+      color="success"
+      onClick={handleUpload}
+      disabled={loading || !selectedOption /* || !algorithm (αν το θες υποχρεωτικό) */}
+      sx={{ height: 40 }} // ώστε να “κάθεται” ίδια με το small Select
+    >
+      {loading ? <CircularProgress size={24} /> : "Search"}
+    </Button>
+  </Box>
+
+  {/* Upload Message */}
+  {uploadMessage.text && (
+    <Alert
+      severity={uploadMessage.type}
+      sx={{ marginTop: 2 }}
+      onClose={() => setUploadMessage({ type: "", text: "" })}
+    >
+      {uploadMessage.text}
+    </Alert>
+  )}
+</Box>
+
+
 
       {/* Data Table */}
       {results.length > 0 && (
   <TableContainer component={Paper} style={{ marginTop: "2em" }}>
     <Typography variant="h6" sx={{ padding: 2, fontWeight: "bold" }}>
-      Κορυφαία Αποτελέσματα
+      Top Results
     </Typography>
 
     <Table>
       <TableHead>
         <TableRow>
-          <TableCell><strong>Όνομα - Επώνυμο / Εταιρεία</strong></TableCell>
-          <TableCell><strong>Προφίλ</strong></TableCell>
-          <TableCell><strong>Ερευνητικό Πεδίο</strong></TableCell>
-          <TableCell><strong>Πεδίο</strong></TableCell>
+          <TableCell><strong>Name - Surname / Company</strong></TableCell>
+          <TableCell><strong>Profile</strong></TableCell>
+          <TableCell><strong>Research Field</strong></TableCell>
+          <TableCell><strong>Field</strong></TableCell>
         </TableRow>
       </TableHead>
 
@@ -178,16 +226,16 @@ export default function FacultyList() {
 {recommendations.length > 0 && (
   <TableContainer component={Paper} style={{ marginTop: "2em" }}>
     <Typography variant="h6" sx={{ padding: 2, fontWeight: "bold" }}>
-      Προτεινόμενα Αποτελέσματα
+      Recommended Results
     </Typography>
 
     <Table>
       <TableHead>
         <TableRow>
-          <TableCell><strong>Όνομα - Επώνυμο / Εταιρεία</strong></TableCell>
-          <TableCell><strong>Προφίλ</strong></TableCell>
-          <TableCell><strong>Ερευνητικό Πεδίο</strong></TableCell>
-          <TableCell><strong>Πεδίο</strong></TableCell>
+          <TableCell><strong>Name - Surname / Company</strong></TableCell>
+          <TableCell><strong>Profile</strong></TableCell>
+          <TableCell><strong>Research Field</strong></TableCell>
+          <TableCell><strong>Field</strong></TableCell>
         </TableRow>
       </TableHead>
 
