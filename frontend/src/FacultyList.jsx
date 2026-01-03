@@ -169,8 +169,8 @@ export default function FacultyList() {
       variant="contained"
       color="success"
       onClick={handleUpload}
-      disabled={loading || !selectedOption /* || !algorithm (αν το θες υποχρεωτικό) */}
-      sx={{ height: 40 }} // ώστε να “κάθεται” ίδια με το small Select
+      disabled={loading || !selectedOption || !fileType || !algorithm}
+      sx={{ height: 40 }} 
     >
       {loading ? <CircularProgress size={24} /> : "Search"}
     </Button>
