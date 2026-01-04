@@ -39,7 +39,7 @@ def run_kmeans( selected_option,file_type):
     researchers_df = spark.read.format("csv") \
             .option("header", "true") \
             .option("inferSchema", "true") \
-            .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_researchers_20000_inc5000dist.csv")
+            .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_files/synthetic_researchers_20000_inc5000dist.csv")
 
 
     # Cast σε συμβατούς τύπους για κοινό schema 

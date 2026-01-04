@@ -1,35 +1,23 @@
-
-from pyspark.ml.functions import vector_to_array
-from pyspark.ml import Pipeline
 from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-from pyspark.ml.feature import RegexTokenizer, StopWordsRemover
-from pyspark.ml.feature import Word2Vec as MLWord2Vec, StandardScaler
-from pyspark.ml.clustering import KMeans
-from pyspark.ml.evaluation import ClusteringEvaluator
-from pyspark.sql import types as T
+from pyspark.sql.functions import lit, monotonically_increasing_id
 import os
-from pyspark.sql import functions as F
-from pyspark.ml.feature import PCA as PCAml
-import time
-import matplotlib
-from matplotlib import pyplot as plt
-from pyspark.sql.functions import col, coalesce, lit
-matplotlib.use("Agg") #Χρησιμοποιω το Agg backend για αποθήκευση εικόνων χωρίς GUI
-import os
-import sys
+
+# Ρυθμίσεις περιβάλλοντος
 os.environ["PYSPARK_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 
-spark = (SparkSession.builder
-                .appName("Researchers+Companies: Unified KMeans")
-                .master("local[8]").getOrCreate())
-    
+output_path = "C:/Users/arhod/Desktop/Diploma-vscode/output_union_data"
+CORES = 9 
+
+spark = SparkSession.builder \
+    .appName(f"Benchmark_Cores_{CORES}") \
+    .master(f"local[{CORES}]") \
+    .config("spark.driver.memory", "4g") \
+    .getOrCreate()
+
 spark.sparkContext.setLogLevel("WARN")
-    
-print(spark.sparkContext.master)
-print(spark.sparkContext.defaultParallelism) 
-    
+
+# --- ΒΗΜΑ 1: Φόρτωση Αρχείων ---
 startups_df = spark.read.format("csv") \
             .option("header", "true") \
             .option("inferSchema", "true") \
@@ -38,69 +26,40 @@ startups_df = spark.read.format("csv") \
 researchers_df = spark.read.format("csv") \
             .option("header", "true") \
             .option("inferSchema", "true") \
-            .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_researchers_20000_inc5000dist.csv")
+            .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_files/synthetic_researchers_20000_inc5000dist.csv")
 
-# ---------------------------------------------------------
-# ΒΗΜΑ 2: Μόνο Μετονομασία (Χωρίς καθαρισμό revenue)
-# ---------------------------------------------------------
-# Απλά μετονομάζουμε για να αποφύγουμε το conflict στα ονόματα
+# --- ΒΗΜΑ 2: Προετοιμασία Στηλών (Renaming) ---
+# Μετονομάζουμε τις στήλες ώστε να είναι ξεκάθαρο ποια ανήκει πού
 companies_clean = startups_df \
     .withColumnRenamed("name", "company_name") \
     .withColumnRenamed("id", "company_id") \
-    .withColumnRenamed("industry", "company_industry") 
+    .withColumnRenamed("industry", "company_industry") \
+    .withColumn("source_type", lit("Company")) 
 
-# ---------------------------------------------------------
-# ΒΗΜΑ 3: Ένωση (Full Outer Join)
-# ---------------------------------------------------------
-joined_df = researchers_df.join(companies_clean, 
-                                researchers_df.researchfield == companies_clean.company_industry, 
-                                "outer")
+researchers_clean = researchers_df \
+    .withColumnRenamed("name", "researcher_name") \
+    .withColumnRenamed("id", "researcher_id") \
+    .withColumnRenamed("researchfield", "researcher_field") \
+    .withColumn("source_type", lit("Researcher")) 
 
-# ---------------------------------------------------------
-# ΒΗΜΑ 4: Διαχείριση Κενών στο πεδίο Ομαδοποίησης
-# ---------------------------------------------------------
-# Δημιουργούμε την κοινή στήλη κατηγορίας
-joined_df = joined_df.withColumn("merged_category", coalesce(col("researchfield"), col("company_industry")))
+# --- ΒΗΜΑ 3: Η Σωστή Ένωση (UnionByName) ---
+# Το allowMissingColumns=True είναι το κλειδί. 
+union_df = researchers_clean.unionByName(companies_clean, allowMissingColumns=True)
+union_df_with_id = union_df.withColumn("id", monotonically_increasing_id())
+other_columns = [c for c in union_df_with_id.columns if c != "id"]
 
-# Γεμίζουμε τα κενά ΜΟΝΟ στην κατηγορία (τα αριθμητικά δεν μας νοιάζουν πλέον)
-joined_df = joined_df.fillna("Unknown", subset=["merged_category"])
+join_df = union_df_with_id.select("global_id", *other_columns)
+# --- Αποθήκευση ---
+join_df.coalesce(1) \
+    .write \
+    .mode("overwrite") \
+    .option("header", "true") \
+    .csv(output_path)
 
-# ---------------------------------------------------------
-# ΒΗΜΑ 5: Πολλαπλασιασμός Δεδομένων (Stress Test Preparation)
-# ---------------------------------------------------------
-print("\n--- ΕΝΑΡΞΗ ΠΟΛΛΑΠΛΑΣΙΑΣΜΟΥ ---")
-initial_count = joined_df.count()
-print(f"Αρχικό πλήθος εγγραφών: {initial_count}")
-
-# Κάνουμε Union τον εαυτό του με τον εαυτό του πολλές φορές
-# x2
-joined_df = joined_df.union(joined_df)
-# x4
-joined_df = joined_df.union(joined_df)
-# x8
-joined_df = joined_df.union(joined_df)
-# x16 (Αν το PC αντέχει, μπορείς να προσθέσεις κι άλλα)
-joined_df = joined_df.union(joined_df)
-
-# ---------------------------------------------------------
-# ΒΗΜΑ 6: Επιβεβαίωση Spark & Εκτύπωση
-# ---------------------------------------------------------
-print("\n--- ΕΛΕΓΧΟΣ ΜΕΤΑ ΤΟΝ ΠΟΛΛΑΠΛΑΣΙΑΣΜΟ ---")
-
-# 1. Έλεγχος Τύπου: Εδώ φαίνεται αν χρησιμοποιούμε Spark
-# Αν γράψει: <class 'pyspark.sql.dataframe.DataFrame'> τότε ΕΙΝΑΙ Spark.
-# Αν έγραφε: <class 'pandas.core.frame.DataFrame'> τότε θα ήταν Pandas.
-print(f"Τύπος DataFrame: {type(joined_df)}")
-
-# 2. Εκτύπωση των 10 πρώτων σειρών
-# Το .show() τρέχει στον Driver αλλά τραβάει δεδομένα από τους Workers
-print("Δείγμα 10 εγγραφών:")
-joined_df.select("name", "surname", "merged_category", "company_name").show(10, truncate=False)
-
-# 3. Τελικό Πλήθος
-# Το count() είναι "Action". Εδώ το Spark θα δουλέψει πραγματικά για να μετρήσει.
-final_count = joined_df.count()
-print(f"Τελικό πλήθος εγγραφών για το πείραμα: {final_count}")
-
-# Σύγκριση
-print(f"Τα δεδομένα αυξήθηκαν κατά {final_count / initial_count} φορές.")
+print(f"Αριθμός ερευνητών: {researchers_clean.count()}")
+print(f"Αριθμός εταιρειών: {companies_clean.count()}")
+print(f"Συνολικός αριθμός γραμμών (Πρέπει να είναι το άθροισμα): {union_df.count()}")
+print(f"Το αρχείο αποθηκεύτηκε επιτυχώς στο: {output_path}")
+print(f"Spark Version: {spark.version}")
+print(f"Spark UI URL: {spark.sparkContext.uiWebUrl}")
+print(f"Spark Master: {spark.sparkContext.master}") 
