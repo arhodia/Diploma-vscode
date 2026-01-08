@@ -1,208 +1,91 @@
 
-from pyspark.ml.functions import vector_to_array
-from pyspark.ml import Pipeline
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-from pyspark.ml.feature import RegexTokenizer, StopWordsRemover
-from pyspark.ml.feature import Word2Vec as MLWord2Vec, StandardScaler
-from pyspark.ml.clustering import KMeans
-from pyspark.ml.evaluation import ClusteringEvaluator
-from pyspark.sql import types as T
-import os
-from pyspark.sql import functions as F
-from pyspark.ml.feature import PCA as PCAml
 import time
-import matplotlib
-from matplotlib import pyplot as plt
-matplotlib.use("Agg") #Χρησιμοποιω το Agg backend για αποθήκευση εικόνων χωρίς GUI
+import numpy as np
+import os
+from pyspark.sql.functions import  col
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import lit, monotonically_increasing_id, coalesce, col
+from pyspark.ml import Pipeline
+from pyspark.ml.feature import RegexTokenizer, StopWordsRemover, Word2Vec
+from pyspark.ml.clustering import BisectingKMeans
+from pyspark.ml.feature import PCA
+from pyspark.ml.linalg import Vectors
+import matplotlib.pyplot as plt
+from pyspark.sql import functions as F
+from pyspark.ml.functions import vector_to_array
+from pyspark.ml.linalg import Vectors
 
+# Ρυθμίσεις περιβάλλοντος
 os.environ["PYSPARK_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
 os.environ["PYSPARK_DRIVER_PYTHON"] = "C:\\Users\\arhod\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
+
+output_path = "C:/Users/arhod/Desktop/Diploma-vscode/output_union_data"
+CORES = 9
 
 
 
 def run_kmeans( selected_option,file_type):
-    spark = (SparkSession.builder
-                .appName("Researchers+Companies: Unified KMeans")
-                .master("local[2]").getOrCreate())
-    
+        spark = SparkSession.builder \
+        .appName(f"Benchmark_Cores_{CORES}") \
+        .master(f"local[{CORES}]") \
+        .config("spark.driver.memory", "4g") \
+        .getOrCreate()
+
     spark.sparkContext.setLogLevel("WARN")
-    
-    print(spark.sparkContext.master)
-    print(spark.sparkContext.defaultParallelism) 
-    
+S
+    #Φόρτωση Αρχείων
     startups_df = spark.read.format("csv") \
-            .option("header", "true") \
-            .option("inferSchema", "true") \
-            .load("C:/Users/arhod/Desktop/Diploma-vscode/INC 5000 Companies 2019.csv")
+                .option("header", "true") \
+                .option("inferSchema", "true") \
+                .load("C:/Users/arhod/Desktop/Diploma-vscode/INC 5000 Companies 2019.csv")
 
     researchers_df = spark.read.format("csv") \
-            .option("header", "true") \
-            .option("inferSchema", "true") \
-            .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_files/synthetic_researchers_20000_inc5000dist.csv")
+                .option("header", "true") \
+                .option("inferSchema", "true") \
+                .load("C:/Users/arhod/Desktop/Diploma-vscode/synthetic_files/synthetic_researchers_20000_inc5000dist.csv")
+
+    #Προετοιμασία Στηλών (Renaming) ---
+    # Μετονομάζουμε τις στήλες ώστε να είναι ξεκάθαρο ποια ανήκει πού
+    companies_clean = startups_df \
+        .withColumnRenamed("name", "company_name") \
+        .withColumnRenamed("id", "company_id") \
+        .withColumnRenamed("industry", "company_industry") \
+        .withColumn("source_type", lit("Company")) 
+
+    researchers_clean = researchers_df \
+        .withColumnRenamed("name", "researcher_name") \
+        .withColumnRenamed("id", "researcher_id") \
+        .withColumnRenamed("researchfield", "researcher_field") \
+        .withColumn("source_type", lit("Researcher")) 
+
+    #  Η Σωστή Ένωση (UnionByName)
+    # Το allowMissingColumns=True είναι το κλειδί. 
+    union_df = researchers_clean.unionByName(companies_clean, allowMissingColumns=True)
+    union_df_with_id = union_df.withColumn("id", monotonically_increasing_id())
+    other_columns = [c for c in union_df_with_id.columns if c != "id"]
+
+    join_df = union_df_with_id.select("id", *other_columns)
 
 
-    # Cast σε συμβατούς τύπους για κοινό schema 
-    researchers_df = researchers_df.withColumn("id", F.col("id").cast("int"))
-    startups_df    = startups_df.withColumn("rank", F.col("rank").cast("int"))
 
-    # Ορίζουμε το ΚΟΙΝΟ σετ στηλών που θέλουμε στο ενιαίο dataset και από τα 2 csv
-    cols = ["id", "name", "surname", "researchField", "company_rank", "profile", "company_name", "industry", "city"]
+    #Δημιουργία κοινής στήλης χαρακτηριστικών researcher_field + company_industry
+    join_df = join_df.withColumn("industry", coalesce(col("researcher_field"), col("company_industry")))
 
-    # Ετοιμάζουμε το DF των researchers: προσθέτουμε τις «εταιρικές» στήλες ως NULL
-    r2 = (researchers_df
-        .withColumn("company_rank", F.lit(None).cast("int"))
-        .withColumn("profile", F.lit(None).cast("string"))
-        .withColumn("company_name", F.lit(None).cast("string"))
-        .withColumn("industry", F.lit(None).cast("string"))
-        .withColumn("city", F.lit(None).cast("string"))
-        .select(*cols))
-
-    # Ετοιμάζουμε το DF των startups: μετονομάζουμε & προσθέτουμε τις «researcher» στήλες ως NULL
-    s2 = (startups_df
-        .withColumnRenamed("rank", "company_rank")
-        .withColumnRenamed("name", "company_name")
-        .select("company_rank", "profile", "company_name", "industry", "city")
-        .withColumn("id", F.lit(None).cast("int"))
-        .withColumn("name", F.lit(None).cast("string"))
-        .withColumn("surname", F.lit(None).cast("string"))
-        .withColumn("researchField", F.lit(None).cast("string"))
-        .select(*cols))
+    # Αποθήκευση 
+    join_df.coalesce(1) \
+        .write \
+        .mode("overwrite") \
+        .option("header", "true") \
+        .csv(output_path)
 
 
-    # Τελικό ενιαίο DataFrame με unionByName
-    combined = r2.unionByName(s2, allowMissingColumns=True)
-    combined = combined.dropDuplicates()
-    combined = combined.distinct()
- 
-    missing_tokens = [
-        "", " ", "  ",  # empty / whitespace
-        "nan", "NaN", "NAN",
-        "null", "NULL",
-        "none", "None", "NONE",
-        "NaT",
-        "N/A", "n/a", "NA",
-        "nand", "NAND"
-    ]
-
-    def summarize_missing(df, missing_tokens):
-        tokens = [t.strip().lower() for t in missing_tokens if t is not None]
-
-        schema = {f.name: f.dataType for f in df.schema.fields}
-        string_cols = [n for n, dt in schema.items() if isinstance(dt, T.StringType)]
-        float_like  = [n for n, dt in schema.items() if isinstance(dt, (T.FloatType, T.DoubleType))]
-
-        def is_missing_str(colname):
-            c = F.trim(F.col(colname))
-            return F.col(colname).isNull() | (c == "") | F.lower(c).isin(tokens)
-
-        # aggregations ανά στήλη
-        agg_exprs = []
-        for c in df.columns:
-            if c in string_cols:
-                cond = is_missing_str(c)
-            elif c in float_like:
-                cond = F.col(c).isNull() | F.isnan(F.col(c))
-            else:
-                cond = F.col(c).isNull()
-            agg_exprs.append(F.sum(F.when(cond, 1).otherwise(0)).alias(c))
-
-        counts_row = df.agg(*agg_exprs).collect()[0].asDict()
-
-        summary_min = (
-            df.sparkSession.createDataFrame([(k, int(v)) for k, v in counts_row.items()],
-                                            ["column", "missing_count"])
-            .orderBy(F.desc("missing_count"))
-        )
-
-        missing_cols = [r["column"]
-                        for r in summary_min.filter(F.col("missing_count") > 0)
-                                            .select("column").collect()]
-        return summary_min, missing_cols
-
-    summary_min,missing_cols = summarize_missing(combined, missing_tokens)
-
-    def replace_missing_values(df, missing_tokens, cols=None, unknown="unknown",int_fill=-1,  long_fill=-1):
-        
-        # κανονικοποίηση tokens
-        tokens = [t.strip().lower() for t in missing_tokens if t is not None]
-        
-        schema = {f.name: f.dataType for f in df.schema.fields}
-        # αν δεν δοθούν ρητά cols, γέμισε όλες τις string στήλες
-        if cols is None:
-            cols = [f.name for f in df.schema.fields if isinstance(f.dataType, T.StringType)]
-        
-        def is_missing_str(cname):
-            c = F.trim(F.col(cname))
-            return F.col(cname).isNull() | (c == "") | F.lower(c).isin(tokens)
-
-        out = df
-        # Για κάθε επιλεγμένη στήλη, αντικατάστησε ανάλογα με τον τύπο της
-        for c in cols:
-            dt = schema.get(c)
-
-            if isinstance(dt, T.StringType):
-                # STRING: αντικατάσταση όλων των "κενών" με 'unknown'
-                out = out.withColumn(
-                    c,
-                    F.when(is_missing_str(c), F.lit(unknown)).otherwise(F.col(c))
-                )
-
-            elif isinstance(dt, T.IntegerType):
-                # INT: αντικατάσταση ΜΟΝΟ των NULL με int_fill (π.χ. -1)
-                out = out.withColumn(
-                    c,
-                    F.when(F.col(c).isNull(), F.lit(int_fill).cast("int")).otherwise(F.col(c))
-                )
-
-            elif isinstance(dt, T.LongType):
-                # LONG: αντικατάσταση ΜΟΝΟ των NULL με long_fill (π.χ. -1)
-                out = out.withColumn(
-                    c,
-                    F.when(F.col(c).isNull(), F.lit(long_fill).cast("long")).otherwise(F.col(c))
-                )
-
-            else:
-                # Άλλοι τύποι (Float/Double/Date/Timestamp/Boolean/Array/Struct κ.λπ.) δεν πειράζονται εδώ.
-                pass
-
-        return out
-
-    clean_combined = replace_missing_values(combined,missing_tokens,cols=missing_cols,unknown="unknown",int_fill=-1,long_fill=-1)
-
-    rf_norm  = F.lower(F.trim(F.col("researchField")))
-    ind_norm = F.lower(F.trim(F.col("industry")))
-    # Αναθέτει τιμή από τη στήλη "researchField" αν η στήλη rf_norm είναι μη κενή, μη "unknown".
-    # Αν όχι, αναθέτει τιμή από "industry" όταν ind_norm πληροί το ίδιο κριτήριο. 
-    # Στην αντίθετη περίπτωση βάζει "unknown".
-    df_topics = (
-        clean_combined
-        .withColumn(
-            "topic_merged",
-            F.when(rf_norm.isNotNull() & (rf_norm != "") & (rf_norm != "unknown"), F.col("researchField"))
-            .when(ind_norm.isNotNull() & (ind_norm != "") & (ind_norm != "unknown"), F.col("industry"))
-            .otherwise(F.lit("unknown"))
-        )
-        # Καθαρίζει και κανονικοποιεί τη στήλη "topic_merged" σε πεζά, αφαιρώντας μη αλφαριθμητικούς χαρακτήρες.
-        .withColumn(
-            "topic_merged_norm",
-            F.trim(F.regexp_replace(F.lower(F.col("topic_merged")), r"[^a-z0-9\s]+", " "))
-        )
-    )
-
-    train_df = df_topics.filter(F.col("topic_merged_norm") != "unknown")
-
-    #Ακολουθούν 6 εντολές 
-    tok = RegexTokenizer(inputCol="topic_merged_norm", outputCol="tokens", pattern="\\W+")
-    rmv = StopWordsRemover(inputCol="tokens", outputCol="tokens_no_sw")
-    w2v = MLWord2Vec(
-        inputCol="tokens_no_sw", outputCol="w2v",
-        vectorSize=400, minCount=1, seed=42, maxIter=20, windowSize=5
-    )
-    scaler = StandardScaler(inputCol="w2v", outputCol="scaled_features", withMean=True, withStd=True)
-    text_pipe = Pipeline(stages=[tok, rmv, w2v, scaler])
-    text_model = text_pipe.fit(train_df)
-    feats_all   = text_model.transform(df_topics)
+    tokenizer = RegexTokenizer(inputCol="industry", outputCol="words", pattern="\\W")
+    stopwords_remover = StopWordsRemover(inputCol="words", outputCol="filtered_words")
+    word2vec = Word2Vec(inputCol="filtered_words", outputCol="features", vectorSize=50, minCount=0,maxIter=50, windowSize=5,seed=42)   
+    # Φτιάχνουμε Pipeline ΜΟΝΟ για τα features
+    feature_pipeline = Pipeline(stages=[tokenizer, stopwords_remover, word2vec])
+    feature_model = feature_pipeline.fit(join_df)
+    feature_df = feature_model.transform(join_df)
     
 
     #Add weightCol to feats_all
